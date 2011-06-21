@@ -45,10 +45,10 @@ typedef struct {
   char read_buffer[BUFSIZE];
 } pinger_t;
 
-void pinger_try_read(pinger_t* pinger);
+void pinger_try_read(UV_P_ pinger_t* pinger);
 
 
-static uv_buf_t alloc_cb(uv_tcp_t* tcp, size_t size) {
+static uv_buf_t alloc_cb(UV_P_ uv_tcp_t* tcp, size_t size) {
   uv_buf_t buf;
   buf.base = (char*)malloc(size);
   buf.len = size;
@@ -56,7 +56,7 @@ static uv_buf_t alloc_cb(uv_tcp_t* tcp, size_t size) {
 }
 
 
-static void pinger_on_close(uv_handle_t* handle) {
+static void pinger_on_close(UV_P_ uv_handle_t* handle) {
   pinger_t* pinger = (pinger_t*)handle->data;
 
   ASSERT(NUM_PINGS == pinger->pongs);
@@ -67,14 +67,14 @@ static void pinger_on_close(uv_handle_t* handle) {
 }
 
 
-static void pinger_after_write(uv_req_t *req, int status) {
+static void pinger_after_write(UV_P_ uv_req_t *req, int status) {
   ASSERT(status == 0);
 
   free(req);
 }
 
 
-static void pinger_write_ping(pinger_t* pinger) {
+static void pinger_write_ping(UV_P_ pinger_t* pinger) {
   uv_req_t *req;
   uv_buf_t buf;
 
@@ -82,9 +82,9 @@ static void pinger_write_ping(pinger_t* pinger) {
   buf.len = strlen(PING);
 
   req = (uv_req_t*)malloc(sizeof(*req));
-  uv_req_init(req, (uv_handle_t*)(&pinger->tcp), pinger_after_write);
+  uv_req_init(UV_A_ req, (uv_handle_t*)(&pinger->tcp), pinger_after_write);
 
-  if (uv_write(req, &buf, 1)) {
+  if (uv_write(UV_A_ req, &buf, 1)) {
     FATAL("uv_write failed");
   }
 
@@ -92,14 +92,14 @@ static void pinger_write_ping(pinger_t* pinger) {
 }
 
 
-static void pinger_read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
+static void pinger_read_cb(UV_P_ uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
   unsigned int i;
   pinger_t* pinger;
 
   pinger = (pinger_t*)tcp->data;
 
   if (nread < 0) {
-    ASSERT(uv_last_error().code == UV_EOF);
+    ASSERT(uv_last_error(UV_A).code == UV_EOF);
 
     puts("got EOF");
 
@@ -107,7 +107,7 @@ static void pinger_read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
       free(buf.base);
     }
 
-    uv_close((uv_handle_t*)(&pinger->tcp), pinger_on_close);
+    uv_close(UV_A_ (uv_handle_t*)(&pinger->tcp), pinger_on_close);
 
     return;
   }
@@ -120,9 +120,9 @@ static void pinger_read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
       printf("PONG %d\n", pinger->pongs);
       pinger->pongs++;
       if (pinger->pongs < NUM_PINGS) {
-        pinger_write_ping(pinger);
+        pinger_write_ping(UV_A_ pinger);
       } else {
-        uv_close((uv_handle_t*)(&pinger->tcp), pinger_on_close);
+        uv_close(UV_A_ (uv_handle_t*)(&pinger->tcp), pinger_on_close);
         return;
       }
     }
@@ -130,18 +130,18 @@ static void pinger_read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
 }
 
 
-static void pinger_on_connect(uv_req_t *req, int status) {
+static void pinger_on_connect(UV_P_ uv_req_t *req, int status) {
   pinger_t *pinger = (pinger_t*)req->handle->data;
 
   ASSERT(status == 0);
 
-  pinger_write_ping(pinger);
+  pinger_write_ping(UV_A_ pinger);
 
-  uv_read_start((uv_tcp_t*)(req->handle), alloc_cb, pinger_read_cb);
+  uv_read_start(UV_A_ (uv_tcp_t*)(req->handle), alloc_cb, pinger_read_cb);
 }
 
 
-static void pinger_new() {
+static void pinger_new(UV_P) {
   int r;
   struct sockaddr_in server_addr = uv_ip4_addr("127.0.0.1", TEST_PORT);
   pinger_t *pinger;
@@ -151,16 +151,16 @@ static void pinger_new() {
   pinger->pongs = 0;
 
   /* Try to connec to the server and do NUM_PINGS ping-pongs. */
-  r = uv_tcp_init(&pinger->tcp);
+  r = uv_tcp_init(UV_A_ &pinger->tcp);
   pinger->tcp.data = pinger;
   ASSERT(!r);
 
   /* We are never doing multiple reads/connects at a time anyway. */
   /* so these handles can be pre-initialized. */
-  uv_req_init(&pinger->connect_req, (uv_handle_t*)(&pinger->tcp),
+  uv_req_init(UV_A_ &pinger->connect_req, (uv_handle_t*)(&pinger->tcp),
       pinger_on_connect);
 
-  r = uv_connect(&pinger->connect_req, server_addr);
+  r = uv_connect(UV_A_ &pinger->connect_req, server_addr);
   ASSERT(!r);
 }
 
@@ -168,8 +168,8 @@ static void pinger_new() {
 TEST_IMPL(ping_pong) {
   uv_init();
 
-  pinger_new();
-  uv_run();
+  pinger_new(UV_DEFAULT);
+  uv_run(UV_DEFAULT);
 
   ASSERT(completed_pingers == 1);
 

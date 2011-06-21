@@ -79,22 +79,22 @@ void thread2_entry(void *arg) {
   while (1) {
     switch (async1_cb_called) {
       case 0:
-        uv_async_send(&async2_handle);
+        uv_async_send(UV_A_ &async2_handle);
         break;
 
       case 1:
-        uv_async_send(&async2_handle);
+        uv_async_send(UV_A_ &async2_handle);
         break;
 
       case 2:
-        uv_async_send(&async2_handle);
+        uv_async_send(UV_A_ &async2_handle);
         break;
     }
-    uv_sleep(5);
+    uv_sleep(UV_A_ 5);
   }
 
   if (async1_cb_called == 20) {
-    uv_close(handle);
+    uv_close(UV_A_ handle);
   }
 }
 
@@ -106,19 +106,19 @@ void thread3_entry(void *arg) {
   int i;
 
   for (i = 0; i < 8; i++) {
-    uv_async_send(&async2_handle);
+    uv_async_send(UV_A_ &async2_handle);
   }
 }
 #endif
 
 
-static void close_cb(uv_handle_t* handle) {
+static void close_cb(UV_P_ uv_handle_t* handle) {
   ASSERT(handle != NULL);
   close_cb_called++;
 }
 
 
-static void async1_cb(uv_async_t* handle, int status) {
+static void async1_cb(UV_P_ uv_async_t* handle, int status) {
   ASSERT(handle == &async1_handle);
   ASSERT(status == 0);
 
@@ -127,13 +127,13 @@ static void async1_cb(uv_async_t* handle, int status) {
 
   if (async1_cb_called > 2 && !async1_closed) {
     async1_closed = 1;
-    uv_close((uv_handle_t*)handle, close_cb);
+    uv_close(UV_A_ (uv_handle_t*)handle, close_cb);
   }
 }
 
 
 #if 0
-static void async2_cb(uv_handle_t* handle, int status) {
+static void async2_cb(UV_P_ uv_handle_t* handle, int status) {
   ASSERT(handle == &async2_handle);
   ASSERT(status == 0);
 
@@ -141,13 +141,13 @@ static void async2_cb(uv_handle_t* handle, int status) {
   printf("async2_cb #%d\n", async2_cb_called);
 
   if (async2_cb_called == 16) {
-    uv_close(handle);
+    uv_close(UV_A_ handle);
   }
 }
 #endif
 
 
-static void prepare_cb(uv_prepare_t* handle, int status) {
+static void prepare_cb(UV_P_ uv_prepare_t* handle, int status) {
   int r;
 
   ASSERT(handle == &prepare_handle);
@@ -161,18 +161,18 @@ static void prepare_cb(uv_prepare_t* handle, int status) {
 
 #if 0
     case 1:
-      thread2_id = uv_create_thread(thread2_entry, NULL);
+      thread2_id = uv_create_thread(UV_A_ thread2_entry, NULL);
       ASSERT(thread2_id != 0);
       break;
 
     case 2:
-      thread3_id = uv_create_thread(thread3_entry, NULL);
+      thread3_id = uv_create_thread(UV_A_ thread3_entry, NULL);
       ASSERT(thread3_id != 0);
       break;
 #endif
 
     case 1:
-      r = uv_close((uv_handle_t*)handle, close_cb);
+      r = uv_close(UV_A_ (uv_handle_t*)handle, close_cb);
       ASSERT(r == 0);
       break;
 
@@ -189,20 +189,20 @@ TEST_IMPL(async) {
 
   uv_init();
 
-  r = uv_prepare_init(&prepare_handle);
+  r = uv_prepare_init(UV_DEFAULT_ &prepare_handle);
   ASSERT(r == 0);
-  r = uv_prepare_start(&prepare_handle, prepare_cb);
+  r = uv_prepare_start(UV_DEFAULT_ &prepare_handle, prepare_cb);
   ASSERT(r == 0);
 
-  r = uv_async_init(&async1_handle, async1_cb);
+  r = uv_async_init(UV_DEFAULT_ &async1_handle, async1_cb);
   ASSERT(r == 0);
 
 #if 0
-  r = uv_async_init(&async2_handle, async2_cb, close_cb, NULL);
+  r = uv_async_init(UV_DEFAULT_ &async2_handle, async2_cb, close_cb, NULL);
   ASSERT(r == 0);
 #endif
 
-  r = uv_run();
+  r = uv_run(UV_DEFAULT);
   ASSERT(r == 0);
 
   r = uv_wait_thread(thread1_id);

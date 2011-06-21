@@ -43,7 +43,7 @@ static int bytes_received = 0;
 static int shutdown_cb_called = 0;
 
 
-static uv_buf_t alloc_cb(uv_tcp_t* tcp, size_t size) {
+static uv_buf_t alloc_cb(UV_P_ uv_tcp_t* tcp, size_t size) {
   uv_buf_t buf;
   buf.len = size;
   buf.base = (char*) malloc(size);
@@ -52,14 +52,14 @@ static uv_buf_t alloc_cb(uv_tcp_t* tcp, size_t size) {
 }
 
 
-static void close_cb(uv_handle_t* handle) {
+static void close_cb(UV_P_ uv_handle_t* handle) {
   ASSERT(nested == 0 && "close_cb must be called from a fresh stack");
 
   close_cb_called++;
 }
 
 
-static void shutdown_cb(uv_req_t* req, int status) {
+static void shutdown_cb(UV_P_ uv_req_t* req, int status) {
   ASSERT(status == 0);
   ASSERT(nested == 0 && "shutdown_cb must be called from a fresh stack");
 
@@ -67,21 +67,21 @@ static void shutdown_cb(uv_req_t* req, int status) {
 }
 
 
-static void read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
+static void read_cb(UV_P_ uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
   ASSERT(nested == 0 && "read_cb must be called from a fresh stack");
 
   printf("Read. nread == %d\n", nread);
   free(buf.base);
 
   if (nread == 0) {
-    ASSERT(uv_last_error().code == UV_EAGAIN);
+    ASSERT(uv_last_error(UV_A).code == UV_EAGAIN);
     return;
 
   } else if (nread == -1) {
-    ASSERT(uv_last_error().code == UV_EOF);
+    ASSERT(uv_last_error(UV_A).code == UV_EOF);
 
     nested++;
-    if (uv_close((uv_handle_t*)tcp, close_cb)) {
+    if (uv_close(UV_A_ (uv_handle_t*)tcp, close_cb)) {
       FATAL("uv_close failed");
     }
     nested--;
@@ -97,11 +97,11 @@ static void read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
   /* from a fresh stack. */
   if (bytes_received == sizeof MESSAGE) {
     nested++;
-    uv_req_init(&shutdown_req, (uv_handle_t*)tcp, shutdown_cb);
+    uv_req_init(UV_A_ &shutdown_req, (uv_handle_t*)tcp, shutdown_cb);
 
     puts("Shutdown");
 
-    if (uv_shutdown(&shutdown_req)) {
+    if (uv_shutdown(UV_A_ &shutdown_req)) {
       FATAL("uv_shutdown failed");
     }
     nested--;
@@ -109,7 +109,7 @@ static void read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
 }
 
 
-static void timer_cb(uv_timer_t* handle, int status) {
+static void timer_cb(UV_P_ uv_timer_t* handle, int status) {
   int r;
 
   ASSERT(handle == &timer);
@@ -119,19 +119,19 @@ static void timer_cb(uv_timer_t* handle, int status) {
   puts("Timeout complete. Now read data...");
 
   nested++;
-  if (uv_read_start(&client, alloc_cb, read_cb)) {
+  if (uv_read_start(UV_A_ &client, alloc_cb, read_cb)) {
     FATAL("uv_read_start failed");
   }
   nested--;
 
   timer_cb_called++;
 
-  r = uv_close((uv_handle_t*)handle, close_cb);
+  r = uv_close(UV_A_ (uv_handle_t*)handle, close_cb);
   ASSERT(r == 0);
 }
 
 
-static void write_cb(uv_req_t* req, int status) {
+static void write_cb(UV_P_ uv_req_t* req, int status) {
   int r;
 
   ASSERT(status == 0);
@@ -144,9 +144,9 @@ static void write_cb(uv_req_t* req, int status) {
   /* back to our receive buffer when we start reading. This maximizes the */
   /* tempation for the backend to use dirty stack for calling read_cb. */
   nested++;
-  r = uv_timer_init(&timer);
+  r = uv_timer_init(UV_A_ &timer);
   ASSERT(r == 0);
-  r = uv_timer_start(&timer, timer_cb, 500, 0);
+  r = uv_timer_start(UV_A_ &timer, timer_cb, 500, 0);
   ASSERT(r == 0);
   nested--;
 
@@ -154,7 +154,7 @@ static void write_cb(uv_req_t* req, int status) {
 }
 
 
-static void connect_cb(uv_req_t* req, int status) {
+static void connect_cb(UV_P_ uv_req_t* req, int status) {
   uv_buf_t buf;
 
   puts("Connected. Write some data to echo server...");
@@ -167,9 +167,9 @@ static void connect_cb(uv_req_t* req, int status) {
   buf.base = (char*) &MESSAGE;
   buf.len = sizeof MESSAGE;
 
-  uv_req_init(&write_req, req->handle, write_cb);
+  uv_req_init(UV_A_ &write_req, req->handle, write_cb);
 
-  if (uv_write(&write_req, &buf, 1)) {
+  if (uv_write(UV_A_ &write_req, &buf, 1)) {
     FATAL("uv_write failed");
   }
 
@@ -182,22 +182,22 @@ static void connect_cb(uv_req_t* req, int status) {
 TEST_IMPL(callback_stack) {
   struct sockaddr_in addr = uv_ip4_addr("127.0.0.1", TEST_PORT);
 
-  uv_init();
+  uv_init(UV_DEFAULT);
 
-  if (uv_tcp_init(&client)) {
+  if (uv_tcp_init(UV_DEFAULT_ &client)) {
     FATAL("uv_tcp_init failed");
   }
 
   puts("Connecting...");
 
   nested++;
-  uv_req_init(&connect_req, (uv_handle_t*)&client, connect_cb);
-  if (uv_connect(&connect_req, addr)) {
+  uv_req_init(UV_DEFAULT_ &connect_req, (uv_handle_t*)&client, connect_cb);
+  if (uv_connect(UV_DEFAULT_ &connect_req, addr)) {
     FATAL("uv_connect failed");
   }
   nested--;
 
-  uv_run();
+  uv_run(UV_DEFAULT);
 
   ASSERT(nested == 0);
   ASSERT(connect_cb_called == 1 && "connect_cb must be called exactly once");

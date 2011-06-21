@@ -36,17 +36,17 @@ static int timer_close_cb_calls;
 static int timer_cb_calls;
 
 
-static void on_close(uv_handle_t* handle) {
+static void on_close(UV_P_ uv_handle_t* handle) {
   close_cb_calls++;
 }
 
 
-static void timer_close_cb(uv_handle_t* handle) {
+static void timer_close_cb(UV_P_ uv_handle_t* handle) {
   timer_close_cb_calls++;
 }
 
 
-static void timer_cb(uv_timer_t* handle, int status) {
+static void timer_cb(UV_P_ uv_timer_t* handle, int status) {
   ASSERT(status == 0);
   timer_cb_calls++;
 
@@ -59,36 +59,36 @@ static void timer_cb(uv_timer_t* handle, int status) {
   ASSERT(connect_cb_calls == 1);
 
   /* Close the tcp handle. */
-  uv_close((uv_handle_t*)&tcp, on_close);
+  uv_close(UV_A_ (uv_handle_t*)&tcp, on_close);
 
   /* Close the timer. */
-  uv_close((uv_handle_t*)handle, timer_close_cb);
+  uv_close(UV_A_ (uv_handle_t*)handle, timer_close_cb);
 }
 
 
-static void on_connect_with_close(uv_req_t *req, int status) {
+static void on_connect_with_close(UV_P_ uv_req_t *req, int status) {
   ASSERT(&tcp == (uv_tcp_t*) req->handle);
   ASSERT(status == -1);
-  ASSERT(uv_last_error().code == UV_ECONNREFUSED);
+  ASSERT(uv_last_error(UV_A).code == UV_ECONNREFUSED);
   connect_cb_calls++;
 
   ASSERT(close_cb_calls == 0);
-  uv_close(req->handle, on_close);
+  uv_close(UV_A_ req->handle, on_close);
 }
 
 
-static void on_connect_without_close(uv_req_t *req, int status) {
+static void on_connect_without_close(UV_P_ uv_req_t *req, int status) {
   ASSERT(status == -1);
-  ASSERT(uv_last_error().code == UV_ECONNREFUSED);
+  ASSERT(uv_last_error(UV_A).code == UV_ECONNREFUSED);
   connect_cb_calls++;
 
-  uv_timer_start(&timer, timer_cb, 100, 0);
+  uv_timer_start(UV_A_ &timer, timer_cb, 100, 0);
 
   ASSERT(close_cb_calls == 0);
 }
 
 
-void connection_fail(uv_connect_cb connect_cb) {
+void connection_fail(UV_P_ uv_connect_cb connect_cb) {
   struct sockaddr_in client_addr, server_addr;
   int r;
 
@@ -98,18 +98,18 @@ void connection_fail(uv_connect_cb connect_cb) {
   server_addr = uv_ip4_addr("127.0.0.1", TEST_PORT);
 
   /* Try to connec to the server and do NUM_PINGS ping-pongs. */
-  r = uv_tcp_init(&tcp);
+  r = uv_tcp_init(UV_A_ &tcp);
   ASSERT(!r);
 
   /* We are never doing multiple reads/connects at a time anyway. */
   /* so these handles can be pre-initialized. */
-  uv_req_init(&req, (uv_handle_t*)&tcp, connect_cb);
+  uv_req_init(UV_A_ &req, (uv_handle_t*)&tcp, connect_cb);
 
-  uv_bind(&tcp, client_addr);
-  r = uv_connect(&req, server_addr);
+  uv_bind(UV_A_ &tcp, client_addr);
+  r = uv_connect(UV_A_ &req, server_addr);
   ASSERT(!r);
 
-  uv_run();
+  uv_run(UV_A);
 
   ASSERT(connect_cb_calls == 1);
   ASSERT(close_cb_calls == 1);
@@ -123,7 +123,7 @@ void connection_fail(uv_connect_cb connect_cb) {
 TEST_IMPL(connection_fail) {
   uv_init();
 
-  connection_fail(on_connect_with_close);
+  connection_fail(UV_DEFAULT_ on_connect_with_close);
 
   ASSERT(timer_close_cb_calls == 0);
   ASSERT(timer_cb_calls == 0);
@@ -140,9 +140,9 @@ TEST_IMPL(connection_fail) {
 TEST_IMPL(connection_fail_doesnt_auto_close) {
   uv_init();
 
-  uv_timer_init(&timer);
+  uv_timer_init(UV_DEFAULT_ &timer);
 
-  connection_fail(on_connect_without_close);
+  connection_fail(UV_DEFAULT_ on_connect_without_close);
 
   ASSERT(timer_close_cb_calls == 1);
   ASSERT(timer_cb_calls == 1);

@@ -40,6 +40,47 @@ typedef struct uv_buf_t {
   char* base;
 } uv_buf_t;
 
+RB_HEAD(uv_timer_tree_s, uv_timer_s);
+
+
+#define UV_LOOP_PRIVATE_FIELDS                                                \
+   /* The loop's I/O completion port */                                       \
+  HANDLE iocp_;                                                               \
+                                                                              \
+  /* The head of the timers tree */                                           \
+  struct uv_timer_tree_s timers_;                                             \
+                                                                              \
+  /* Head of a single-linked list of closed handles */                        \
+  uv_handle_t* endgame_handles_;                                              \
+                                                                              \
+  /* Tail of a single-linked circular queue of pending reqs. If the queue */  \
+  /* is empty, tail_ is NULL. If there is only one item, */                   \
+  /* tail_->next_req == tail_ */                                              \
+  uv_req_t* pending_reqs_tail_;                                               \
+                                                                              \
+  /* Last error. */                                                           \
+  uv_err_t last_error_;                                                       \
+  char* err_str_;                                                             \
+                                                                              \
+  /* Reference count that keeps the event loop alive */                       \
+  int refs_;                                                                  \
+                                                                              \
+  /* The current time according to the event loop. in msecs. */               \
+  int64_t now_;                                                               \
+                                                                              \
+  /* Lists of active loop (prepare / check / idle) watchers */                \
+  uv_prepare_t* prepare_handles_;                                             \
+  uv_check_t* check_handles_;                                                 \
+  uv_idle_t* idle_handles_;                                                   \
+                                                                              \
+  /* This pointer will refer to the prepare/check/idle handle whose */        \
+  /* callback is scheduled to be called next. This is needed to allow */      \
+  /* safe removal from one of the lists above while that list being */        \
+  /* iterated over. */                                                        \
+  uv_prepare_t* next_prepare_handle_;                                         \
+  uv_check_t* next_check_handle_;                                             \
+  uv_idle_t* next_idle_handle_;
+
 #define UV_REQ_PRIVATE_FIELDS             \
   union {                                 \
     /* Used by I/O operations */          \
@@ -83,6 +124,7 @@ typedef struct uv_buf_t {
   uv_timer_cb timer_cb;
 
 #define UV_ASYNC_PRIVATE_FIELDS           \
+  uv_loop_t* loop;                        \
   struct uv_req_s async_req;              \
   /* char to avoid alignment issues */    \
   char volatile async_sent;

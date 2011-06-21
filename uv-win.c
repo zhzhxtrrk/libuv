@@ -167,51 +167,22 @@ static LPFN_TRANSMITFILE            pTransmitFile;
 
 /* Binary tree used to keep the list of timers sorted. */
 static int uv_timer_compare(uv_timer_t* handle1, uv_timer_t* handle2);
-RB_HEAD(uv_timer_tree_s, uv_timer_s);
 RB_PROTOTYPE_STATIC(uv_timer_tree_s, uv_timer_s, tree_entry, uv_timer_compare)
 
-/* The head of the timers tree */
-static struct uv_timer_tree_s uv_timers_ = RB_INITIALIZER(uv_timers_);
-
-
-/* Head of a single-linked list of closed handles */
-static uv_handle_t* uv_endgame_handles_ = NULL;
-
-
-/* Tail of a single-linked circular queue of pending reqs. If the queue is */
-/* empty, tail_ is NULL. If there is only one item, tail_->next_req == tail_ */
-static uv_req_t* uv_pending_reqs_tail_ = NULL;
-
-
-/* The current time according to the event loop. in msecs. */
-static int64_t uv_now_ = 0;
+/* The tick rate of the high-resolution clock. */
 static int64_t uv_ticks_per_msec_ = 0;
-
-
-/*
- * Global I/O completion port
- */
-static HANDLE uv_iocp_;
-
 
 /* Global error code */
 static const uv_err_t uv_ok_ = { UV_OK, ERROR_SUCCESS };
-static uv_err_t uv_last_error_ = { UV_OK, ERROR_SUCCESS };
-
-/* Error message string */
-static char* uv_err_str_ = NULL;
-
-
-/* Reference count that keeps the event loop alive */
-static int uv_refs_ = 0;
-
 
 /* Ip address used to bind to any port at any interface */
 static struct sockaddr_in uv_addr_ip4_any_;
 
-
 /* A zero-size buffer for use by uv_read */
 static char uv_zero_[] = "";
+
+/* The default event loop */
+uv_loop_t uv_default_loop;
 
 
 /*
@@ -315,22 +286,22 @@ static void uv_fatal_error(const int errorno, const char* syscall) {
 }
 
 
-uv_err_t uv_last_error() {
-  return uv_last_error_;
+uv_err_t uv_last_error(UV_P) {
+  return UV_LOOP->last_error_;
 }
 
 
-char* uv_strerror(uv_err_t err) {
-  if (uv_err_str_ != NULL) {
-    LocalFree((void*) uv_err_str_);
+char* uv_strerror(UV_P_ uv_err_t err) {
+  if (UV_LOOP->err_str_ != NULL) {
+    LocalFree((void*) UV_LOOP->err_str_);
   }
 
   FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
       FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err.sys_errno_,
-      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&uv_err_str_, 0, NULL);
+      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&UV_LOOP->err_str_, 0, NULL);
 
-  if (uv_err_str_) {
-    return uv_err_str_;
+  if (UV_LOOP->err_str_) {
+    return UV_LOOP->err_str_;
   } else {
     return "Unknown error";
   }
@@ -372,9 +343,9 @@ static uv_err_t uv_new_sys_error(int sys_errno) {
 }
 
 
-static void uv_set_sys_error(int sys_errno) {
-  uv_last_error_.code = uv_translate_sys_error(sys_errno);
-  uv_last_error_.sys_errno_ = sys_errno;
+static void uv_set_sys_error(UV_P_ int sys_errno) {
+  UV_LOOP->last_error_.code = uv_translate_sys_error(sys_errno);
+  UV_LOOP->last_error_.sys_errno_ = sys_errno;
 }
 
 
@@ -450,23 +421,55 @@ void uv_init() {
     uv_fatal_error(WSAGetLastError(), "closesocket");
   }
 
-  /* Create an I/O completion port */
-  uv_iocp_ = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
-  if (uv_iocp_ == NULL) {
-    uv_fatal_error(GetLastError(), "CreateIoCompletionPort");
-  }
-
-  /* Initialize the event loop time */
+  /* Query the high-resolution clock frequency. */
   if (!QueryPerformanceFrequency(&timer_frequency))
     uv_fatal_error(GetLastError(), "QueryPerformanceFrequency");
   uv_ticks_per_msec_ = timer_frequency.QuadPart / 1000;
 
-  uv_update_time();
+  /* Initialize the default event loop. */
+  if (uv_loop_init(UV_DEFAULT) != 0) {
+    uv_fatal_error(uv_last_error(UV_DEFAULT).sys_errno_, "uv_loop_init");
+  }
 }
 
 
-void uv_req_init(uv_req_t* req, uv_handle_t* handle, void* cb) {
-  uv_counters()->req_init++;
+int uv_loop_init(UV_P) {
+  /* Data structures that store active watchers */
+  RB_INIT(&UV_LOOP->timers_);
+  UV_LOOP->endgame_handles_ = NULL;
+
+  UV_LOOP->prepare_handles_ = NULL;
+  UV_LOOP->check_handles_ = NULL;
+  UV_LOOP->idle_handles_ = NULL;
+
+  UV_LOOP->next_prepare_handle_ = NULL;
+  UV_LOOP->next_check_handle_ = NULL;
+  UV_LOOP->next_idle_handle_ = NULL;
+
+  /* Last error */
+  UV_LOOP->pending_reqs_tail_ = NULL;
+  UV_LOOP->last_error_.code = UV_OK;
+  UV_LOOP->last_error_.sys_errno_ = ERROR_SUCCESS;
+  UV_LOOP->err_str_ = NULL;
+
+  /* Reference count */
+  UV_LOOP->refs_ = 0;
+
+  /* Create an I/O completion port */
+  UV_LOOP->iocp_ = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
+  if (UV_LOOP->iocp_ == NULL) {
+    uv_set_sys_error(UV_A_ GetLastError());
+    return -1;
+  }
+
+  /* Initialize the event loop time. */
+  uv_update_time(UV_A);
+  return 0;
+}
+
+
+void uv_req_init(UV_P_ uv_req_t* req, uv_handle_t* handle, void* cb) {
+  uv_counters(UV_A)->req_init++;
   req->type = UV_UNKNOWN_REQ;
   req->flags = 0;
   req->handle = handle;
@@ -479,28 +482,28 @@ static uv_req_t* uv_overlapped_to_req(OVERLAPPED* overlapped) {
 }
 
 
-static void uv_insert_pending_req(uv_req_t* req) {
+static void uv_insert_pending_req(UV_P_ uv_req_t* req) {
   req->next_req = NULL;
-  if (uv_pending_reqs_tail_) {
-    req->next_req = uv_pending_reqs_tail_->next_req;
-    uv_pending_reqs_tail_ = req;
+  if (UV_LOOP->pending_reqs_tail_) {
+    req->next_req = UV_LOOP->pending_reqs_tail_->next_req;
+    UV_LOOP->pending_reqs_tail_ = req;
   } else {
     req->next_req = req;
-    uv_pending_reqs_tail_ = req;
+    UV_LOOP->pending_reqs_tail_ = req;
   }
 }
 
 
-static uv_req_t* uv_remove_pending_req() {
+static uv_req_t* uv_remove_pending_req(UV_P) {
   uv_req_t* req;
 
-  if (uv_pending_reqs_tail_) {
-    req = uv_pending_reqs_tail_->next_req;
+  if (UV_LOOP->pending_reqs_tail_) {
+    req = UV_LOOP->pending_reqs_tail_->next_req;
 
-    if (req == uv_pending_reqs_tail_) {
-      uv_pending_reqs_tail_ = NULL;
+    if (req == UV_LOOP->pending_reqs_tail_) {
+      UV_LOOP->pending_reqs_tail_ = NULL;
     } else {
-      uv_pending_reqs_tail_->next_req = req->next_req;
+      UV_LOOP->pending_reqs_tail_->next_req = req->next_req;
     }
 
     return req;
@@ -512,30 +515,30 @@ static uv_req_t* uv_remove_pending_req() {
 }
 
 
-static int uv_tcp_set_socket(uv_tcp_t* handle, SOCKET socket) {
+static int uv_tcp_set_socket(UV_P_ uv_tcp_t* handle, SOCKET socket) {
   DWORD yes = 1;
 
   assert(handle->socket == INVALID_SOCKET);
 
   /* Set the socket to nonblocking mode */
   if (ioctlsocket(socket, FIONBIO, &yes) == SOCKET_ERROR) {
-    uv_set_sys_error(WSAGetLastError());
+    uv_set_sys_error(UV_A_ WSAGetLastError());
     return -1;
   }
 
   /* Make the socket non-inheritable */
   if (!SetHandleInformation((HANDLE)socket, HANDLE_FLAG_INHERIT, 0)) {
-    uv_set_sys_error(GetLastError());
+    uv_set_sys_error(UV_A_ GetLastError());
     return -1;
   }
 
   /* Associate it with the I/O completion port. */
   /* Use uv_handle_t pointer as completion key. */
   if (CreateIoCompletionPort((HANDLE)socket,
-                             uv_iocp_,
+                             UV_LOOP->iocp_,
                              (ULONG_PTR)socket,
                              0) == NULL) {
-    uv_set_sys_error(GetLastError());
+    uv_set_sys_error(UV_A_ GetLastError());
     return -1;
   }
 
@@ -545,14 +548,14 @@ static int uv_tcp_set_socket(uv_tcp_t* handle, SOCKET socket) {
 }
 
 
-static void uv_tcp_init_connection(uv_tcp_t* handle) {
+static void uv_tcp_init_connection(UV_P_ uv_tcp_t* handle) {
   handle->flags |= UV_HANDLE_CONNECTION;
   handle->write_reqs_pending = 0;
-  uv_req_init(&(handle->read_req), (uv_handle_t*)handle, NULL);
+  uv_req_init(UV_A_ &handle->read_req, (uv_handle_t*) handle, NULL);
 }
 
 
-int uv_tcp_init(uv_tcp_t* handle) {
+int uv_tcp_init(UV_P_ uv_tcp_t* handle) {
   handle->socket = INVALID_SOCKET;
   handle->write_queue_size = 0;
   handle->type = UV_TCP;
@@ -561,16 +564,16 @@ int uv_tcp_init(uv_tcp_t* handle) {
   handle->error = uv_ok_;
   handle->accept_socket = INVALID_SOCKET;
 
-  uv_counters()->handle_init++;
-  uv_counters()->tcp_init++;
+  uv_counters(UV_A)->handle_init++;
+  uv_counters(UV_A)->tcp_init++;
 
-  uv_refs_++;
+  UV_LOOP->refs_++;
 
   return 0;
 }
 
 
-static void uv_tcp_endgame(uv_tcp_t* handle) {
+static void uv_tcp_endgame(UV_P_ uv_tcp_t* handle) {
   uv_err_t err;
   int status;
 
@@ -588,9 +591,9 @@ static void uv_tcp_endgame(uv_tcp_t* handle) {
     if (handle->shutdown_req->cb) {
       handle->shutdown_req->flags &= ~UV_REQ_PENDING;
       if (status == -1) {
-        uv_last_error_ = err;
+        UV_LOOP->last_error_ = err;
       }
-      ((uv_shutdown_cb)handle->shutdown_req->cb)(handle->shutdown_req, status);
+      ((uv_shutdown_cb)handle->shutdown_req->cb)(UV_A_ handle->shutdown_req, status);
     }
     handle->reqs_pending--;
   }
@@ -601,83 +604,83 @@ static void uv_tcp_endgame(uv_tcp_t* handle) {
     handle->flags |= UV_HANDLE_CLOSED;
 
     if (handle->close_cb) {
-      handle->close_cb((uv_handle_t*)handle);
+      handle->close_cb(UV_A_ (uv_handle_t*) handle);
     }
 
-    uv_refs_--;
+    UV_LOOP->refs_--;
   }
 }
 
 
-static void uv_timer_endgame(uv_timer_t* handle) {
+static void uv_timer_endgame(UV_P_ uv_timer_t* handle) {
   if (handle->flags & UV_HANDLE_CLOSING) {
     assert(!(handle->flags & UV_HANDLE_CLOSED));
     handle->flags |= UV_HANDLE_CLOSED;
 
     if (handle->close_cb) {
-      handle->close_cb((uv_handle_t*)handle);
+      handle->close_cb(UV_A_ (uv_handle_t*) handle);
     }
 
-    uv_refs_--;
+    UV_LOOP->refs_--;
   }
 }
 
 
-static void uv_loop_watcher_endgame(uv_handle_t* handle) {
+static void uv_loop_watcher_endgame(UV_P_ uv_handle_t* handle) {
   if (handle->flags & UV_HANDLE_CLOSING) {
     assert(!(handle->flags & UV_HANDLE_CLOSED));
     handle->flags |= UV_HANDLE_CLOSED;
 
     if (handle->close_cb) {
-      handle->close_cb(handle);
+      handle->close_cb(UV_A_ handle);
     }
 
-    uv_refs_--;
+    UV_LOOP->refs_--;
   }
 }
 
 
-static void uv_async_endgame(uv_async_t* handle) {
+static void uv_async_endgame(UV_P_ uv_async_t* handle) {
   if (handle->flags & UV_HANDLE_CLOSING &&
       !handle->async_sent) {
     assert(!(handle->flags & UV_HANDLE_CLOSED));
     handle->flags |= UV_HANDLE_CLOSED;
 
     if (handle->close_cb) {
-      handle->close_cb((uv_handle_t*)handle);
+      handle->close_cb(UV_A_ (uv_handle_t*) handle);
     }
 
-    uv_refs_--;
+    UV_LOOP->refs_--;
   }
 }
 
 
-static void uv_process_endgames() {
+static void uv_process_endgames(UV_P) {
   uv_handle_t* handle;
 
-  while (uv_endgame_handles_) {
-    handle = uv_endgame_handles_;
-    uv_endgame_handles_ = handle->endgame_next;
+  while (UV_LOOP->endgame_handles_) {
+    handle = UV_LOOP->endgame_handles_;
+    UV_LOOP->endgame_handles_ = handle->endgame_next;
 
     handle->flags &= ~UV_HANDLE_ENDGAME_QUEUED;
 
     switch (handle->type) {
       case UV_TCP:
-        uv_tcp_endgame((uv_tcp_t*)handle);
+        uv_tcp_endgame(UV_A_ (uv_tcp_t*) handle);
         break;
 
       case UV_TIMER:
-        uv_timer_endgame((uv_timer_t*)handle);
+        uv_timer_endgame(UV_A_ (uv_timer_t*) handle);
         break;
 
       case UV_PREPARE:
       case UV_CHECK:
       case UV_IDLE:
-        uv_loop_watcher_endgame(handle);
+        uv_loop_watcher_endgame(UV_A_ handle);
         break;
 
       case UV_ASYNC:
-        uv_async_endgame((uv_async_t*)handle);
+        uv_async_endgame(UV_A_ (uv_async_t*) handle);
         break;
 
       default:
@@ -688,17 +691,17 @@ static void uv_process_endgames() {
 }
 
 
-static void uv_want_endgame(uv_handle_t* handle) {
+static void uv_want_endgame(UV_P_ uv_handle_t* handle) {
   if (!(handle->flags & UV_HANDLE_ENDGAME_QUEUED)) {
     handle->flags |= UV_HANDLE_ENDGAME_QUEUED;
 
-    handle->endgame_next = uv_endgame_handles_;
-    uv_endgame_handles_ = handle;
+    handle->endgame_next = UV_LOOP->endgame_handles_;
+    UV_LOOP->endgame_handles_ = handle;
   }
 }
 
 
-static int uv_close_error(uv_handle_t* handle, uv_err_t e) {
+static int uv_close_error(UV_P_ uv_handle_t* handle, uv_err_t e) {
   uv_tcp_t* tcp;
 
   if (handle->flags & UV_HANDLE_CLOSING) {
@@ -715,33 +718,33 @@ static int uv_close_error(uv_handle_t* handle, uv_err_t e) {
       tcp->flags &= ~(UV_HANDLE_READING | UV_HANDLE_LISTENING);
       closesocket(tcp->socket);
       if (tcp->reqs_pending == 0) {
-        uv_want_endgame(handle);
+        uv_want_endgame(UV_A_ handle);
       }
       return 0;
 
     case UV_TIMER:
-      uv_timer_stop((uv_timer_t*)handle);
-      uv_want_endgame(handle);
+      uv_timer_stop(UV_A_ (uv_timer_t*) handle);
+      uv_want_endgame(UV_A_ handle);
       return 0;
 
     case UV_PREPARE:
-      uv_prepare_stop((uv_prepare_t*)handle);
-      uv_want_endgame(handle);
+      uv_prepare_stop(UV_A_ (uv_prepare_t*) handle);
+      uv_want_endgame(UV_A_ handle);
       return 0;
 
     case UV_CHECK:
-      uv_check_stop((uv_check_t*)handle);
-      uv_want_endgame(handle);
+      uv_check_stop(UV_A_ (uv_check_t*) handle);
+      uv_want_endgame(UV_A_ handle);
       return 0;
 
     case UV_IDLE:
-      uv_idle_stop((uv_idle_t*)handle);
-      uv_want_endgame(handle);
+      uv_idle_stop(UV_A_ (uv_idle_t*) handle);
+      uv_want_endgame(UV_A_ handle);
       return 0;
 
     case UV_ASYNC:
-      if (!((uv_async_t*)handle)->async_sent) {
-        uv_want_endgame(handle);
+      if (!((uv_async_t*) handle)->async_sent) {
+        uv_want_endgame(UV_A_ handle);
       }
       return 0;
 
@@ -753,13 +756,13 @@ static int uv_close_error(uv_handle_t* handle, uv_err_t e) {
 }
 
 
-int uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
+int uv_close(UV_P_ uv_handle_t* handle, uv_close_cb close_cb) {
   handle->close_cb = close_cb;
-  return uv_close_error(handle, uv_ok_);
+  return uv_close_error(UV_A_ handle, uv_ok_);
 }
 
 
-int uv__bind(uv_tcp_t* handle, int domain, struct sockaddr* addr, int addrsize) {
+int uv__bind(UV_P_ uv_tcp_t* handle, int domain, struct sockaddr* addr, int addrsize) {
   DWORD err;
   int r;
   SOCKET sock;
@@ -767,11 +770,11 @@ int uv__bind(uv_tcp_t* handle, int domain, struct sockaddr* addr, int addrsize) 
   if (handle->socket == INVALID_SOCKET) {
     sock = socket(domain, SOCK_STREAM, 0);
     if (sock == INVALID_SOCKET) {
-      uv_set_sys_error(WSAGetLastError());
+      uv_set_sys_error(UV_A_ WSAGetLastError());
       return -1;
     }
 
-    if (uv_tcp_set_socket(handle, sock) == -1) {
+    if (uv_tcp_set_socket(UV_A_ handle, sock) == -1) {
       closesocket(sock);
       return -1;
     }
@@ -786,7 +789,7 @@ int uv__bind(uv_tcp_t* handle, int domain, struct sockaddr* addr, int addrsize) 
       handle->error = uv_new_sys_error(err);
       handle->flags |= UV_HANDLE_BIND_ERROR;
     } else {
-      uv_set_sys_error(err);
+      uv_set_sys_error(UV_A_ err);
       return -1;
     }
   }
@@ -797,27 +800,27 @@ int uv__bind(uv_tcp_t* handle, int domain, struct sockaddr* addr, int addrsize) 
 }
 
 
-int uv_bind(uv_tcp_t* handle, struct sockaddr_in addr) {
+int uv_bind(UV_P_ uv_tcp_t* handle, struct sockaddr_in addr) {
   if (addr.sin_family != AF_INET) {
     uv_set_sys_error(WSAEFAULT);
     return -1;
   }
 
-  return uv__bind(handle, AF_INET, (struct sockaddr*)&addr, sizeof(struct sockaddr_in));
+  return uv__bind(UV_A_ handle, AF_INET, (struct sockaddr*)&addr, sizeof(struct sockaddr_in));
 }
 
 
-int uv_bind6(uv_tcp_t* handle, struct sockaddr_in6 addr) {
+int uv_bind6(UV_P_ uv_tcp_t* handle, struct sockaddr_in6 addr) {
   if (addr.sin6_family != AF_INET6) {
     uv_set_sys_error(WSAEFAULT);
     return -1;
   }
 
-  return uv__bind(handle, AF_INET6, (struct sockaddr*)&addr, sizeof(struct sockaddr_in6));
+  return uv__bind(UV_A_ handle, AF_INET6, (struct sockaddr*)&addr, sizeof(struct sockaddr_in6));
 }
 
 
-static void uv_queue_accept(uv_tcp_t* handle) {
+static void uv_queue_accept(UV_P_ uv_tcp_t* handle) {
   uv_req_t* req;
   BOOL success;
   DWORD bytes;
@@ -836,7 +839,7 @@ static void uv_queue_accept(uv_tcp_t* handle) {
   accept_socket = socket(AF_INET, SOCK_STREAM, 0);
   if (accept_socket == INVALID_SOCKET) {
     req->error = uv_new_sys_error(WSAGetLastError());
-    uv_insert_pending_req(req);
+    uv_insert_pending_req(UV_A_ req);
     return;
   }
 
@@ -855,7 +858,7 @@ static void uv_queue_accept(uv_tcp_t* handle) {
   if (!success && WSAGetLastError() != ERROR_IO_PENDING) {
     /* Make this req pending reporting an error. */
     req->error = uv_new_sys_error(WSAGetLastError());
-    uv_insert_pending_req(req);
+    uv_insert_pending_req(UV_A_ req);
     /* Destroy the preallocated client socket. */
     closesocket(accept_socket);
     return;
@@ -868,7 +871,7 @@ static void uv_queue_accept(uv_tcp_t* handle) {
 }
 
 
-static void uv_queue_read(uv_tcp_t* handle) {
+static void uv_queue_read(UV_P_ uv_tcp_t* handle) {
   uv_req_t* req;
   uv_buf_t buf;
   int result;
@@ -895,7 +898,7 @@ static void uv_queue_read(uv_tcp_t* handle) {
   if (result != 0 && WSAGetLastError() != ERROR_IO_PENDING) {
     /* Make this req pending reporting an error. */
     req->error = uv_new_sys_error(WSAGetLastError());
-    uv_insert_pending_req(req);
+    uv_insert_pending_req(UV_A_ req);
     return;
   }
 
@@ -904,74 +907,74 @@ static void uv_queue_read(uv_tcp_t* handle) {
 }
 
 
-int uv_listen(uv_tcp_t* handle, int backlog, uv_connection_cb cb) {
+int uv_listen(UV_P_ uv_tcp_t* handle, int backlog, uv_connection_cb cb) {
   assert(backlog > 0);
 
   if (handle->flags & UV_HANDLE_BIND_ERROR) {
-    uv_last_error_ = handle->error;
+    UV_LOOP->last_error_ = handle->error;
     return -1;
   }
 
   if (handle->flags & UV_HANDLE_LISTENING ||
       handle->flags & UV_HANDLE_READING) {
     /* Already listening. */
-    uv_set_sys_error(WSAEALREADY);
+    uv_set_sys_error(UV_A_ WSAEALREADY);
     return -1;
   }
 
   if (listen(handle->socket, backlog) == SOCKET_ERROR) {
-    uv_set_sys_error(WSAGetLastError());
+    uv_set_sys_error(UV_A_ WSAGetLastError());
     return -1;
   }
 
   handle->flags |= UV_HANDLE_LISTENING;
   handle->connection_cb = cb;
 
-  uv_req_init(&(handle->accept_req), (uv_handle_t*)handle, NULL);
-  uv_queue_accept(handle);
+  uv_req_init(UV_A_ &handle->accept_req, (uv_handle_t*) handle, NULL);
+  uv_queue_accept(UV_A_ handle);
 
   return 0;
 }
 
 
-int uv_accept(uv_tcp_t* server, uv_tcp_t* client) {
+int uv_accept(UV_P_ uv_tcp_t* server, uv_tcp_t* client) {
   int rv = 0;
 
   if (server->accept_socket == INVALID_SOCKET) {
-    uv_set_sys_error(WSAENOTCONN);
+    uv_set_sys_error(UV_A_ WSAENOTCONN);
     return -1;
   }
 
-  if (uv_tcp_set_socket(client, server->accept_socket) == -1) {
+  if (uv_tcp_set_socket(UV_A_ client, server->accept_socket) == -1) {
     closesocket(server->accept_socket);
     rv = -1;
   } else {
-    uv_tcp_init_connection(client);
+    uv_tcp_init_connection(UV_A_ client);
   }
 
   server->accept_socket = INVALID_SOCKET;
 
   if (!(server->flags & UV_HANDLE_CLOSING)) {
-    uv_queue_accept(server);
+    uv_queue_accept(UV_A_ server);
   }
 
   return rv;
 }
 
 
-int uv_read_start(uv_tcp_t* handle, uv_alloc_cb alloc_cb, uv_read_cb read_cb) {
+int uv_read_start(UV_P_ uv_tcp_t* handle, uv_alloc_cb alloc_cb, uv_read_cb read_cb) {
   if (!(handle->flags & UV_HANDLE_CONNECTION)) {
-    uv_set_sys_error(WSAEINVAL);
+    uv_set_sys_error(UV_A_ WSAEINVAL);
     return -1;
   }
 
   if (handle->flags & UV_HANDLE_READING) {
-    uv_set_sys_error(WSAEALREADY);
+    uv_set_sys_error(UV_A_ WSAEALREADY);
     return -1;
   }
 
   if (handle->flags & UV_HANDLE_EOF) {
-    uv_set_sys_error(WSAESHUTDOWN);
+    uv_set_sys_error(UV_A_ WSAESHUTDOWN);
     return -1;
   }
 
@@ -982,20 +985,20 @@ int uv_read_start(uv_tcp_t* handle, uv_alloc_cb alloc_cb, uv_read_cb read_cb) {
   /* If reading was stopped and then started again, there could stell be a */
   /* read request pending. */
   if (!(handle->read_req.flags & UV_REQ_PENDING))
-    uv_queue_read(handle);
+    uv_queue_read(UV_A_ handle);
 
   return 0;
 }
 
 
-int uv_read_stop(uv_tcp_t* handle) {
+int uv_read_stop(UV_P_ uv_tcp_t* handle) {
   handle->flags &= ~UV_HANDLE_READING;
 
   return 0;
 }
 
 
-int uv_connect(uv_req_t* req, struct sockaddr_in addr) {
+int uv_connect(UV_P_ uv_req_t* req, struct sockaddr_in addr) {
   int addrsize = sizeof(struct sockaddr_in);
   BOOL success;
   DWORD bytes;
@@ -1004,17 +1007,17 @@ int uv_connect(uv_req_t* req, struct sockaddr_in addr) {
   assert(!(req->flags & UV_REQ_PENDING));
 
   if (handle->flags & UV_HANDLE_BIND_ERROR) {
-    uv_last_error_ = handle->error;
+    UV_LOOP->last_error_ = handle->error;
     return -1;
   }
 
   if (addr.sin_family != AF_INET) {
-    uv_set_sys_error(WSAEFAULT);
+    uv_set_sys_error(UV_A_ WSAEFAULT);
     return -1;
   }
 
   if (!(handle->flags & UV_HANDLE_BOUND) &&
-      uv_bind(handle, uv_addr_ip4_any_) < 0)
+      uv_bind(UV_A_ handle, uv_addr_ip4_any_) < 0)
     return -1;
 
   memset(&req->overlapped, 0, sizeof(req->overlapped));
@@ -1029,7 +1032,7 @@ int uv_connect(uv_req_t* req, struct sockaddr_in addr) {
                        &req->overlapped);
 
   if (!success && WSAGetLastError() != ERROR_IO_PENDING) {
-    uv_set_sys_error(WSAGetLastError());
+    uv_set_sys_error(UV_A_ WSAGetLastError());
     return -1;
   }
 
@@ -1052,7 +1055,7 @@ static size_t uv_count_bufs(uv_buf_t bufs[], int count) {
 }
 
 
-int uv_write(uv_req_t* req, uv_buf_t bufs[], int bufcnt) {
+int uv_write(UV_P_ uv_req_t* req, uv_buf_t bufs[], int bufcnt) {
   int result;
   DWORD bytes, err;
   uv_tcp_t* handle = (uv_tcp_t*) req->handle;
@@ -1060,12 +1063,12 @@ int uv_write(uv_req_t* req, uv_buf_t bufs[], int bufcnt) {
   assert(!(req->flags & UV_REQ_PENDING));
 
   if (!(req->handle->flags & UV_HANDLE_CONNECTION)) {
-    uv_set_sys_error(WSAEINVAL);
+    uv_set_sys_error(UV_A_ WSAEINVAL);
     return -1;
   }
 
   if (req->handle->flags & UV_HANDLE_SHUTTING) {
-    uv_set_sys_error(WSAESHUTDOWN);
+    uv_set_sys_error(UV_A_ WSAESHUTDOWN);
     return -1;
   }
 
@@ -1083,7 +1086,7 @@ int uv_write(uv_req_t* req, uv_buf_t bufs[], int bufcnt) {
     err = WSAGetLastError();
     if (err != WSA_IO_PENDING) {
       /* Send failed due to an error. */
-      uv_set_sys_error(WSAGetLastError());
+      uv_set_sys_error(UV_A_ WSAGetLastError());
       return -1;
     }
   }
@@ -1105,17 +1108,17 @@ int uv_write(uv_req_t* req, uv_buf_t bufs[], int bufcnt) {
 }
 
 
-int uv_shutdown(uv_req_t* req) {
+int uv_shutdown(UV_P_ uv_req_t* req) {
   uv_tcp_t* handle = (uv_tcp_t*) req->handle;
   int status = 0;
 
   if (!(req->handle->flags & UV_HANDLE_CONNECTION)) {
-    uv_set_sys_error(WSAEINVAL);
+    uv_set_sys_error(UV_A_ WSAEINVAL);
     return -1;
   }
 
   if (handle->flags & UV_HANDLE_SHUTTING) {
-    uv_set_sys_error(WSAESHUTDOWN);
+    uv_set_sys_error(UV_A_ WSAESHUTDOWN);
     return -1;
   }
 
@@ -1126,13 +1129,13 @@ int uv_shutdown(uv_req_t* req) {
     handle->shutdown_req = req;
   handle->reqs_pending++;
 
-  uv_want_endgame((uv_handle_t*)handle);
+  uv_want_endgame(UV_A_ (uv_handle_t*) handle);
 
   return 0;
 }
 
 
-static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
+static void uv_tcp_return_req(UV_P_ uv_tcp_t* handle, uv_req_t* req) {
   DWORD bytes, flags, err;
   uv_buf_t buf;
 
@@ -1145,13 +1148,13 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
     case UV_WRITE:
       handle->write_queue_size -= req->queued_bytes;
       if (req->cb) {
-        uv_last_error_ = req->error;
-        ((uv_write_cb)req->cb)(req, uv_last_error_.code == UV_OK ? 0 : -1);
+        UV_LOOP->last_error_ = req->error;
+        ((uv_write_cb) req->cb)(UV_A_ req, req->error.code == UV_OK ? 0 : -1);
       }
       handle->write_reqs_pending--;
       if (handle->write_reqs_pending == 0 &&
           handle->flags & UV_HANDLE_SHUTTING) {
-        uv_want_endgame((uv_handle_t*)handle);
+        uv_want_endgame(UV_A_ (uv_handle_t*) handle);
       }
       break;
 
@@ -1164,16 +1167,16 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
 
         /* Stop reading and report error. */
         handle->flags &= ~UV_HANDLE_READING;
-        uv_last_error_ = req->error;
+        UV_LOOP->last_error_ = req->error;
         buf.base = 0;
         buf.len = 0;
-        handle->read_cb(handle, -1, buf);
+        handle->read_cb(UV_A_ handle, -1, buf);
         break;
       }
 
       /* Do nonblocking reads until the buffer is empty */
       while (handle->flags & UV_HANDLE_READING) {
-        buf = handle->alloc_cb(handle, 65536);
+        buf = handle->alloc_cb(UV_A_ handle, 65536);
         assert(buf.len > 0);
         flags = 0;
         if (WSARecv(handle->socket,
@@ -1185,7 +1188,7 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
                     NULL) != SOCKET_ERROR) {
           if (bytes > 0) {
             /* Successful read */
-            handle->read_cb(handle, bytes, buf);
+            handle->read_cb(UV_A_ handle, bytes, buf);
             /* Read again only if bytes == buf.len */
             if (bytes < buf.len) {
               break;
@@ -1194,28 +1197,28 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
             /* Connection closed */
             handle->flags &= ~UV_HANDLE_READING;
             handle->flags |= UV_HANDLE_EOF;
-            uv_last_error_.code = UV_EOF;
-            uv_last_error_.sys_errno_ = ERROR_SUCCESS;
-            handle->read_cb(handle, -1, buf);
+            UV_LOOP->last_error_.code = UV_EOF;
+            UV_LOOP->last_error_.sys_errno_ = ERROR_SUCCESS;
+            handle->read_cb(UV_A_ handle, -1, buf);
             break;
           }
         } else {
           err = WSAGetLastError();
           if (err == WSAEWOULDBLOCK) {
             /* Read buffer was completely empty, report a 0-byte read. */
-            uv_set_sys_error(WSAEWOULDBLOCK);
-            handle->read_cb(handle, 0, buf);
+            uv_set_sys_error(UV_A_ WSAEWOULDBLOCK);
+            handle->read_cb(UV_A_ handle, 0, buf);
           } else {
             /* Ouch! serious error. */
-            uv_set_sys_error(err);
-            handle->read_cb(handle, -1, buf);
+            uv_set_sys_error(UV_A_ err);
+            handle->read_cb(UV_A_ handle, -1, buf);
           }
           break;
         }
       }
       /* Post another 0-read if still reading and not closing. */
       if (handle->flags & UV_HANDLE_READING) {
-        uv_queue_read(handle);
+        uv_queue_read(UV_A_ handle);
       }
       break;
 
@@ -1230,8 +1233,8 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
         }
         handle->flags &= ~UV_HANDLE_LISTENING;
         if (handle->connection_cb) {
-          uv_last_error_ = req->error;
-          handle->connection_cb(handle, -1);
+          UV_LOOP->last_error_ = req->error;
+          handle->connection_cb(UV_A_ handle, -1);
         }
         break;
       }
@@ -1244,7 +1247,7 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
                      sizeof(handle->socket)) == 0) {
         /* Accept and SO_UPDATE_ACCEPT_CONTEXT were successful. */
         if (handle->connection_cb) {
-          handle->connection_cb(handle, 0);
+          handle->connection_cb(UV_A_ handle, 0);
         }
       } else {
         /* Error related to accepted socket is ignored because the server */
@@ -1252,7 +1255,7 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
         /* uv_queue_accept will detect it. */
         closesocket(handle->accept_socket);
         if (handle->flags & UV_HANDLE_LISTENING) {
-          uv_queue_accept(handle);
+          uv_queue_accept(UV_A_ handle);
         }
       }
       break;
@@ -1265,15 +1268,15 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
                          SO_UPDATE_CONNECT_CONTEXT,
                          NULL,
                          0) == 0) {
-            uv_tcp_init_connection(handle);
-            ((uv_connect_cb)req->cb)(req, 0);
+            uv_tcp_init_connection(UV_A_ handle);
+            ((uv_connect_cb) req->cb)(UV_A_ req, 0);
           } else {
-            uv_set_sys_error(WSAGetLastError());
-            ((uv_connect_cb)req->cb)(req, -1);
+            uv_set_sys_error(UV_A_ WSAGetLastError());
+            ((uv_connect_cb) req->cb)(UV_A_ req, -1);
           }
         } else {
-          uv_last_error_ = req->error;
-          ((uv_connect_cb)req->cb)(req, -1);
+          UV_LOOP->last_error_ = req->error;
+          ((uv_connect_cb) req->cb)(UV_A_ req, -1);
         }
       }
       break;
@@ -1289,7 +1292,7 @@ static void uv_tcp_return_req(uv_tcp_t* handle, uv_req_t* req) {
   /* more pending requests. */
   if (handle->flags & UV_HANDLE_CLOSING &&
       handle->reqs_pending == 0) {
-    uv_want_endgame((uv_handle_t*)handle);
+    uv_want_endgame(UV_A_ (uv_handle_t*) handle);
   }
 }
 
@@ -1310,9 +1313,9 @@ static int uv_timer_compare(uv_timer_t* a, uv_timer_t* b) {
 RB_GENERATE_STATIC(uv_timer_tree_s, uv_timer_s, tree_entry, uv_timer_compare);
 
 
-int uv_timer_init(uv_timer_t* handle) {
-  uv_counters()->handle_init++;
-  uv_counters()->timer_init++;
+int uv_timer_init(UV_P_ uv_timer_t* handle) {
+  uv_counters(UV_A)->handle_init++;
+  uv_counters(UV_A)->timer_init++;
 
   handle->type = UV_TIMER;
   handle->flags = 0;
@@ -1320,23 +1323,25 @@ int uv_timer_init(uv_timer_t* handle) {
   handle->timer_cb = NULL;
   handle->repeat = 0;
 
-  uv_refs_++;
+  UV_LOOP->refs_++;
 
   return 0;
 }
 
 
-int uv_timer_start(uv_timer_t* handle, uv_timer_cb timer_cb, int64_t timeout, int64_t repeat) {
+int uv_timer_start(UV_P_ uv_timer_t* handle, uv_timer_cb timer_cb, int64_t timeout, int64_t repeat) {
+  struct uv_timer_tree_s* timers = &UV_LOOP->timers_;
+
   if (handle->flags & UV_HANDLE_ACTIVE) {
-    RB_REMOVE(uv_timer_tree_s, &uv_timers_, handle);
+    RB_REMOVE(uv_timer_tree_s, timers, handle);
   }
 
   handle->timer_cb = (void*) timer_cb;
-  handle->due = uv_now_ + timeout;
+  handle->due = UV_LOOP->now_ + timeout;
   handle->repeat = repeat;
   handle->flags |= UV_HANDLE_ACTIVE;
 
-  if (RB_INSERT(uv_timer_tree_s, &uv_timers_, handle) != NULL) {
+  if (RB_INSERT(uv_timer_tree_s, timers, handle) != NULL) {
     uv_fatal_error(ERROR_INVALID_DATA, "RB_INSERT");
   }
 
@@ -1344,11 +1349,11 @@ int uv_timer_start(uv_timer_t* handle, uv_timer_cb timer_cb, int64_t timeout, in
 }
 
 
-int uv_timer_stop(uv_timer_t* handle) {
+int uv_timer_stop(UV_P_ uv_timer_t* handle) {
   if (!(handle->flags & UV_HANDLE_ACTIVE))
     return 0;
 
-  RB_REMOVE(uv_timer_tree_s, &uv_timers_, handle);
+  RB_REMOVE(uv_timer_tree_s, &UV_LOOP->timers_, handle);
 
   handle->flags &= ~UV_HANDLE_ACTIVE;
 
@@ -1356,22 +1361,22 @@ int uv_timer_stop(uv_timer_t* handle) {
 }
 
 
-int uv_timer_again(uv_timer_t* handle) {
+int uv_timer_again(UV_P_ uv_timer_t* handle) {
   /* If timer_cb is NULL that means that the timer was never started. */
   if (!handle->timer_cb) {
-    uv_set_sys_error(ERROR_INVALID_DATA);
+    uv_set_sys_error(UV_A_ ERROR_INVALID_DATA);
     return -1;
   }
 
   if (handle->flags & UV_HANDLE_ACTIVE) {
-    RB_REMOVE(uv_timer_tree_s, &uv_timers_, handle);
+    RB_REMOVE(uv_timer_tree_s, &UV_LOOP->timers_, handle);
     handle->flags &= ~UV_HANDLE_ACTIVE;
   }
 
   if (handle->repeat) {
-    handle->due = uv_now_ + handle->repeat;
+    handle->due = UV_LOOP->now_ + handle->repeat;
 
-    if (RB_INSERT(uv_timer_tree_s, &uv_timers_, handle) != NULL) {
+    if (RB_INSERT(uv_timer_tree_s, &UV_LOOP->timers_, handle) != NULL) {
       uv_fatal_error(ERROR_INVALID_DATA, "RB_INSERT");
     }
 
@@ -1382,59 +1387,50 @@ int uv_timer_again(uv_timer_t* handle) {
 }
 
 
-void uv_timer_set_repeat(uv_timer_t* handle, int64_t repeat) {
+void uv_timer_set_repeat(UV_P_ uv_timer_t* handle, int64_t repeat) {
   assert(handle->type == UV_TIMER);
   handle->repeat = repeat;
 }
 
 
-int64_t uv_timer_get_repeat(uv_timer_t* handle) {
+int64_t uv_timer_get_repeat(UV_P_ uv_timer_t* handle) {
   assert(handle->type == UV_TIMER);
   return handle->repeat;
 }
 
 
-void uv_update_time() {
+void uv_update_time(UV_P) {
   LARGE_INTEGER counter;
 
   if (!QueryPerformanceCounter(&counter))
     uv_fatal_error(GetLastError(), "QueryPerformanceCounter");
 
-  uv_now_ = counter.QuadPart / uv_ticks_per_msec_;
+  UV_LOOP->now_ = counter.QuadPart / uv_ticks_per_msec_;
 }
 
 
-int64_t uv_now() {
-  return uv_now_;
+int64_t uv_now(UV_P) {
+  return UV_LOOP->now_;
 }
 
 
 #define UV_LOOP_WATCHER_DEFINE(name, NAME)                                    \
-  /* Lists of active loop (prepare / check / idle) watchers */                \
-  static uv_##name##_t* uv_##name##_handles_ = NULL;                          \
-                                                                              \
-  /* This pointer will refer to the prepare/check/idle handle whose */        \
-  /* callback is scheduled to be called next. This is needed to allow */      \
-  /* safe removal from one of the lists above while that list being */        \
-  /* iterated over. */                                                        \
-  static uv_##name##_t* uv_next_##name##_handle_ = NULL;                      \
-                                                                              \
-                                                                              \
-  int uv_##name##_init(uv_##name##_t* handle) {                               \
+  int uv_##name##_init(UV_P_ uv_##name##_t* handle) {                         \
     handle->type = UV_##NAME;                                                 \
     handle->flags = 0;                                                        \
     handle->error = uv_ok_;                                                   \
                                                                               \
-    uv_refs_++;                                                               \
+    UV_LOOP->refs_++;                                                         \
                                                                               \
-    uv_counters()->handle_init++;                                             \
-    uv_counters()->prepare_init++;                                            \
+    uv_counters(UV_A)->handle_init++;                                         \
+    uv_counters(UV_A)->prepare_init++;                                        \
                                                                               \
     return 0;                                                                 \
   }                                                                           \
                                                                               \
                                                                               \
-  int uv_##name##_start(uv_##name##_t* handle, uv_##name##_cb cb) {           \
+  int uv_##name##_start(UV_P_ uv_##name##_t* handle,                          \
+      uv_##name##_cb cb) {                                                    \
     uv_##name##_t* old_head;                                                  \
                                                                               \
     assert(handle->type == UV_##NAME);                                        \
@@ -1442,7 +1438,7 @@ int64_t uv_now() {
     if (handle->flags & UV_HANDLE_ACTIVE)                                     \
       return 0;                                                               \
                                                                               \
-    old_head = uv_##name##_handles_;                                          \
+    old_head = UV_LOOP->##name##_handles_;                                    \
                                                                               \
     handle->name##_next = old_head;                                           \
     handle->name##_prev = NULL;                                               \
@@ -1451,7 +1447,7 @@ int64_t uv_now() {
       old_head->name##_prev = handle;                                         \
     }                                                                         \
                                                                               \
-    uv_##name##_handles_ = handle;                                            \
+    UV_LOOP->##name##_handles_ = handle;                                      \
                                                                               \
     handle->name##_cb = cb;                                                   \
     handle->flags |= UV_HANDLE_ACTIVE;                                        \
@@ -1460,20 +1456,20 @@ int64_t uv_now() {
   }                                                                           \
                                                                               \
                                                                               \
-  int uv_##name##_stop(uv_##name##_t* handle) {                               \
+  int uv_##name##_stop(UV_P_ uv_##name##_t* handle) {                         \
     assert(handle->type == UV_##NAME);                                        \
                                                                               \
     if (!(handle->flags & UV_HANDLE_ACTIVE))                                  \
       return 0;                                                               \
                                                                               \
     /* Update loop head if needed */                                          \
-    if (uv_##name##_handles_ == handle) {                                     \
-      uv_##name##_handles_ = handle->name##_next;                             \
+    if (UV_LOOP->##name##_handles_ == handle) {                               \
+      UV_LOOP->##name##_handles_ = handle->name##_next;                       \
     }                                                                         \
                                                                               \
     /* Update the iterator-next pointer of needed */                          \
-    if (uv_next_##name##_handle_ == handle) {                                 \
-      uv_next_##name##_handle_ = handle->name##_next;                         \
+    if (UV_LOOP->next_##name##_handle_ == handle) {                           \
+      UV_LOOP->next_##name##_handle_ = handle->name##_next;                   \
     }                                                                         \
                                                                               \
     if (handle->name##_prev) {                                                \
@@ -1489,16 +1485,16 @@ int64_t uv_now() {
   }                                                                           \
                                                                               \
                                                                               \
-  static void uv_##name##_invoke() {                                          \
+  static void uv_##name##_invoke(UV_P) {                                      \
     uv_##name##_t* handle;                                                    \
                                                                               \
-    uv_next_##name##_handle_ = uv_##name##_handles_;                          \
+    UV_LOOP->next_##name##_handle_ = UV_LOOP->##name##_handles_;              \
                                                                               \
-    while (uv_next_##name##_handle_ != NULL) {                                \
-      handle = uv_next_##name##_handle_;                                      \
-      uv_next_##name##_handle_ = handle->name##_next;                         \
+    while (UV_LOOP->next_##name##_handle_ != NULL) {                          \
+      handle = UV_LOOP->next_##name##_handle_;                                \
+      UV_LOOP->next_##name##_handle_ = handle->name##_next;                   \
                                                                               \
-      handle->name##_cb(handle, 0);                                           \
+      handle->name##_cb(UV_A_ handle, 0);                                     \
     }                                                                         \
   }
 
@@ -1508,7 +1504,7 @@ UV_LOOP_WATCHER_DEFINE(check, CHECK)
 UV_LOOP_WATCHER_DEFINE(idle, IDLE)
 
 
-int uv_is_active(uv_handle_t* handle) {
+int uv_is_active(UV_P_ uv_handle_t* handle) {
   switch (handle->type) {
     case UV_TIMER:
     case UV_IDLE:
@@ -1522,22 +1518,23 @@ int uv_is_active(uv_handle_t* handle) {
 }
 
 
-int uv_async_init(uv_async_t* handle, uv_async_cb async_cb) {
+int uv_async_init(UV_P_ uv_async_t* handle, uv_async_cb async_cb) {
   uv_req_t* req;
 
-  uv_counters()->handle_init++;
-  uv_counters()->async_init++;
+  uv_counters(UV_A)->handle_init++;
+  uv_counters(UV_A)->async_init++;
 
   handle->type = UV_ASYNC;
   handle->flags = 0;
   handle->async_sent = 0;
   handle->error = uv_ok_;
+  handle->loop = UV_LOOP;
 
   req = &handle->async_req;
-  uv_req_init(req, (uv_handle_t*)handle, async_cb);
+  uv_req_init(UV_A_ req, (uv_handle_t*) handle, async_cb);
   req->type = UV_WAKEUP;
 
-  uv_refs_++;
+  UV_LOOP->refs_++;
 
   return 0;
 }
@@ -1554,7 +1551,7 @@ int uv_async_send(uv_async_t* handle) {
   assert(!(handle->flags & UV_HANDLE_CLOSING));
 
   if (!uv_atomic_exchange_set(&handle->async_sent)) {
-    if (!PostQueuedCompletionStatus(uv_iocp_,
+    if (!PostQueuedCompletionStatus(handle->loop->iocp_,
                                     0,
                                     0,
                                     &handle->async_req.overlapped)) {
@@ -1566,34 +1563,34 @@ int uv_async_send(uv_async_t* handle) {
 }
 
 
-static void uv_async_return_req(uv_async_t* handle, uv_req_t* req) {
+static void uv_async_return_req(UV_P_ uv_async_t* handle, uv_req_t* req) {
   assert(handle->type == UV_ASYNC);
   assert(req->type == UV_WAKEUP);
 
   handle->async_sent = 0;
   if (req->cb) {
-    ((uv_async_cb)req->cb)((uv_async_t*) handle, 0);
+    ((uv_async_cb)req->cb)(UV_A_ (uv_async_t*) handle, 0);
   }
   if (handle->flags & UV_HANDLE_CLOSING) {
-    uv_want_endgame((uv_handle_t*)handle);
+    uv_want_endgame(UV_A_ (uv_handle_t*) handle);
   }
 }
 
 
-static void uv_process_reqs() {
+static void uv_process_reqs(UV_P) {
   uv_req_t* req;
   uv_handle_t* handle;
 
-  while (req = uv_remove_pending_req()) {
+  while (req = uv_remove_pending_req(UV_A)) {
     handle = req->handle;
 
     switch (handle->type) {
       case UV_TCP:
-        uv_tcp_return_req((uv_tcp_t*)handle, req);
+        uv_tcp_return_req(UV_A_ (uv_tcp_t*)handle, req);
         break;
 
       case UV_ASYNC:
-        uv_async_return_req((uv_async_t*)handle, req);
+        uv_async_return_req(UV_A_ (uv_async_t*)handle, req);
         break;
 
       case UV_ARES:
@@ -1615,22 +1612,23 @@ static void uv_process_reqs() {
 }
 
 
-static void uv_process_timers() {
+static void uv_process_timers(UV_P) {
+  struct uv_timer_tree_s* timers = &UV_LOOP->timers_;
   uv_timer_t* timer;
 
   /* Call timer callbacks */
-  for (timer = RB_MIN(uv_timer_tree_s, &uv_timers_);
-       timer != NULL && timer->due <= uv_now_;
-       timer = RB_MIN(uv_timer_tree_s, &uv_timers_)) {
-    RB_REMOVE(uv_timer_tree_s, &uv_timers_, timer);
+  for (timer = RB_MIN(uv_timer_tree_s, timers);
+       timer != NULL && timer->due <= UV_LOOP->now_;
+       timer = RB_MIN(uv_timer_tree_s, timers)) {
+    RB_REMOVE(uv_timer_tree_s, timers, timer);
 
     if (timer->repeat != 0) {
       /* If it is a repeating timer, reschedule with repeat timeout. */
       timer->due += timer->repeat;
-      if (timer->due < uv_now_) {
-        timer->due = uv_now_;
+      if (timer->due < UV_LOOP->now_) {
+        timer->due = UV_LOOP->now_;
       }
-      if (RB_INSERT(uv_timer_tree_s, &uv_timers_, timer) != NULL) {
+      if (RB_INSERT(uv_timer_tree_s, timers, timer) != NULL) {
         uv_fatal_error(ERROR_INVALID_DATA, "RB_INSERT");
       }
     } else {
@@ -1638,21 +1636,21 @@ static void uv_process_timers() {
       timer->flags &= ~UV_HANDLE_ACTIVE;
     }
 
-    timer->timer_cb((uv_timer_t*) timer, 0);
+    timer->timer_cb(UV_A_ (uv_timer_t*) timer, 0);
   }
 }
 
 
-static DWORD uv_get_poll_timeout() {
+static DWORD uv_get_poll_timeout(UV_P) {
   uv_timer_t* timer;
   int64_t delta;
 
   /* Check if there are any running timers */
-  timer = RB_MIN(uv_timer_tree_s, &uv_timers_);
+  timer = RB_MIN(uv_timer_tree_s, &UV_LOOP->timers_);
   if (timer) {
-    uv_update_time();
+    uv_update_time(UV_A);
 
-    delta = timer->due - uv_now_;
+    delta = timer->due - UV_LOOP->now_;
     if (delta >= UINT_MAX) {
       /* Can't have a timeout greater than UINT_MAX, and a timeout value of */
       /* UINT_MAX means infinite, so that's no good either. */
@@ -1670,20 +1668,20 @@ static DWORD uv_get_poll_timeout() {
 }
 
 
-static void uv_poll() {
+static void uv_poll(UV_P) {
   BOOL success;
   DWORD bytes;
   ULONG_PTR key;
   OVERLAPPED* overlapped;
   uv_req_t* req;
 
-  success = GetQueuedCompletionStatus(uv_iocp_,
+  success = GetQueuedCompletionStatus(UV_LOOP->iocp_,
                                       &bytes,
                                       &key,
                                       &overlapped,
-                                      uv_get_poll_timeout());
+                                      uv_get_poll_timeout(UV_A));
 
-  uv_update_time();
+  uv_update_time(UV_A);
 
   if (overlapped) {
     /* Package was dequeued */
@@ -1695,7 +1693,7 @@ static void uv_poll() {
       req->error = uv_new_sys_error(GetLastError());
     }
 
-    uv_insert_pending_req(req);
+    uv_insert_pending_req(UV_A_ req);
 
   } else if (GetLastError() != WAIT_TIMEOUT) {
     /* Serious error */
@@ -1704,47 +1702,47 @@ static void uv_poll() {
 }
 
 
-int uv_run() {
+int uv_run(UV_P) {
   while (1) {
-    uv_update_time();
-    uv_process_timers();
+    uv_update_time(UV_A);
+    uv_process_timers(UV_A);
 
     /* Terrible: please fix me! */
-    while (uv_refs_ > 0 &&
-        (uv_idle_handles_ || uv_pending_reqs_tail_ || uv_endgame_handles_)) {
+    while (UV_LOOP->refs_ > 0 &&
+        (UV_LOOP->idle_handles_ || UV_LOOP->pending_reqs_tail_ || UV_LOOP->endgame_handles_)) {
       /* Terrible: please fix me! */
-      while (uv_pending_reqs_tail_ || uv_endgame_handles_) {
-        uv_process_endgames();
-        uv_process_reqs();
+      while (UV_LOOP->pending_reqs_tail_ || UV_LOOP->endgame_handles_) {
+        uv_process_endgames(UV_A);
+        uv_process_reqs(UV_A);
       }
 
       /* Call idle callbacks */
-      uv_idle_invoke();
+      uv_idle_invoke(UV_A);
     }
 
-    if (uv_refs_ <= 0) {
+    if (UV_LOOP->refs_ <= 0) {
       break;
     }
 
-    uv_prepare_invoke();
+    uv_prepare_invoke(UV_A);
 
-    uv_poll();
+    uv_poll(UV_A);
 
-    uv_check_invoke();
+    uv_check_invoke(UV_A);
   }
 
-  assert(uv_refs_ == 0);
+  assert(UV_LOOP->refs_ == 0);
   return 0;
 }
 
 
-void uv_ref() {
-  uv_refs_++;
+void uv_ref(UV_P) {
+  UV_LOOP->refs_++;
 }
 
 
-void uv_unref() {
-  uv_refs_--;
+void uv_unref(UV_P) {
+  UV_LOOP->refs_--;
 }
 
 
@@ -1757,7 +1755,7 @@ int uv_utf8_to_utf16(const char* utf8Buffer, wchar_t* utf16Buffer, size_t utf16S
 }
 
 
-int uv_exepath(char* buffer, size_t* size) {
+int uv_exepath(UV_P_ char* buffer, size_t* size) {
   int retVal;
   size_t utf16Size;
   wchar_t* utf16Buffer;
@@ -1775,7 +1773,7 @@ int uv_exepath(char* buffer, size_t* size) {
   /* Get the path as UTF-16 */
   utf16Size = GetModuleFileNameW(NULL, utf16Buffer, *size - 1);
   if (utf16Size <= 0) {
-    uv_set_sys_error(GetLastError());
+    uv_set_sys_error(UV_A_ GetLastError());
     retVal = -1;
     goto done;
   }
@@ -1785,7 +1783,7 @@ int uv_exepath(char* buffer, size_t* size) {
   /* Convert to UTF-8 */
   *size = uv_utf16_to_utf8(utf16Buffer, utf16Size, buffer, *size);
   if (!*size) {
-    uv_set_sys_error(GetLastError());
+    uv_set_sys_error(UV_A_ GetLastError());
     retVal = -1;
     goto done;
   }

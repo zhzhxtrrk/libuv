@@ -39,6 +39,31 @@ extern "C" {
 typedef intptr_t ssize_t;
 #endif
 
+#ifndef UV_MULTIPLICITY
+# define UV_MULTIPLICITY 1
+#endif
+
+#if UV_MULTIPLICITY
+  /* Support multiple event loops */
+# define UV_P         uv_loop_t* __uv_loop
+# define UV_P_        UV_P,
+# define UV_A         __uv_loop
+# define UV_A_        UV_A,
+# define UV_DEFAULT   (&uv_default_loop)
+# define UV_DEFAULT_  UV_DEFAULT,
+# define UV_LOOP      __uv_loop
+#else
+  /* Default loop only */
+# define UV_P         /* empty */
+# define UV_P_        /* empty */
+# define UV_A         /* empty */
+# define UV_A_        /* empty */
+# define UV_DEFAULT   /* empty */
+# define UV_DEFAULT_  /* empty */
+# define UV_LOOP      (&uv_default_loop)
+#endif
+
+typedef struct uv_loop_s uv_loop_t;
 typedef struct uv_err_s uv_err_t;
 typedef struct uv_handle_s uv_handle_t;
 typedef struct uv_tcp_s uv_tcp_t;
@@ -49,6 +74,8 @@ typedef struct uv_idle_s uv_idle_t;
 typedef struct uv_req_s uv_req_t;
 typedef struct uv_async_s uv_async_t;
 typedef struct uv_getaddrinfo_s uv_getaddrinfo_t;
+
+extern uv_loop_t uv_default_loop;
 
 
 #if defined(__unix__) || defined(__POSIX__) || defined(__APPLE__)
@@ -66,20 +93,20 @@ typedef struct uv_getaddrinfo_s uv_getaddrinfo_t;
  * In the case of uv_read_cb the uv_buf_t returned should be freed by the
  * user.
  */
-typedef uv_buf_t (*uv_alloc_cb)(uv_tcp_t* tcp, size_t suggested_size);
-typedef void (*uv_read_cb)(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf);
-typedef void (*uv_write_cb)(uv_req_t* req, int status);
-typedef void (*uv_connect_cb)(uv_req_t* req, int status);
-typedef void (*uv_shutdown_cb)(uv_req_t* req, int status);
-typedef void (*uv_connection_cb)(uv_tcp_t* server, int status);
-typedef void (*uv_close_cb)(uv_handle_t* handle);
-typedef void (*uv_timer_cb)(uv_timer_t* handle, int status);
+typedef uv_buf_t (*uv_alloc_cb)(UV_P_ uv_tcp_t* tcp, size_t suggested_size);
+typedef void (*uv_read_cb)(UV_P_ uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf);
+typedef void (*uv_write_cb)(UV_P_ uv_req_t* req, int status);
+typedef void (*uv_connect_cb)(UV_P_ uv_req_t* req, int status);
+typedef void (*uv_shutdown_cb)(UV_P_ uv_req_t* req, int status);
+typedef void (*uv_connection_cb)(UV_P_ uv_tcp_t* server, int status);
+typedef void (*uv_close_cb)(UV_P_ uv_handle_t* handle);
+typedef void (*uv_timer_cb)(UV_P_ uv_timer_t* handle, int status);
 /* TODO: do these really need a status argument? */
-typedef void (*uv_async_cb)(uv_async_t* handle, int status);
-typedef void (*uv_prepare_cb)(uv_prepare_t* handle, int status);
-typedef void (*uv_check_cb)(uv_check_t* handle, int status);
-typedef void (*uv_idle_cb)(uv_idle_t* handle, int status);
-typedef void (*uv_getaddrinfo_cb)(uv_getaddrinfo_t* handle, int status, struct addrinfo* res);
+typedef void (*uv_async_cb)(UV_P_ uv_async_t* handle, int status);
+typedef void (*uv_prepare_cb)(UV_P_ uv_prepare_t* handle, int status);
+typedef void (*uv_check_cb)(UV_P_ uv_check_t* handle, int status);
+typedef void (*uv_idle_cb)(UV_P_ uv_idle_t* handle, int status);
+typedef void (*uv_getaddrinfo_cb)(UV_P_ uv_getaddrinfo_t* handle, int status, struct addrinfo* res);
 
 
 /* Expand this list if necessary. */
@@ -161,6 +188,11 @@ struct uv_err_s {
 };
 
 
+struct uv_loop_s {
+  UV_LOOP_PRIVATE_FIELDS
+};
+
+
 struct uv_req_s {
   /* read-only */
   uv_req_type type;
@@ -175,7 +207,7 @@ struct uv_req_s {
 /*
  * Initialize a request for use with uv_write, uv_shutdown, or uv_connect.
  */
-void uv_req_init(uv_req_t* req, uv_handle_t* handle, void* cb);
+void uv_req_init(UV_P_ uv_req_t* req, uv_handle_t* handle, void* cb);
 
 
 #define UV_HANDLE_FIELDS \
@@ -196,13 +228,13 @@ struct uv_handle_s {
  * Returns 1 if the prepare/check/idle handle has been started, 0 otherwise.
  * For other handle types this always returns 1.
  */
-int uv_is_active(uv_handle_t* handle);
+int uv_is_active(UV_P_ uv_handle_t* handle);
 
 /*
  * Request handle to be closed. close_cb will be called asynchronously after
  * this call. This MUST be called on each handle before memory is released.
  */
-int uv_close(uv_handle_t* handle, uv_close_cb close_cb);
+int uv_close(UV_P_ uv_handle_t* handle, uv_close_cb close_cb);
 
 
 /*
@@ -216,16 +248,16 @@ struct uv_tcp_s {
   UV_TCP_PRIVATE_FIELDS
 };
 
-int uv_tcp_init(uv_tcp_t* handle);
+int uv_tcp_init(UV_P_ uv_tcp_t* handle);
 
-int uv_bind(uv_tcp_t* handle, struct sockaddr_in);
-int uv_bind6(uv_tcp_t* handle, struct sockaddr_in6);
+int uv_bind(UV_P_ uv_tcp_t* handle, struct sockaddr_in);
+int uv_bind6(UV_P_ uv_tcp_t* handle, struct sockaddr_in6);
 
-int uv_connect(uv_req_t* req, struct sockaddr_in);
+int uv_connect(UV_P_ uv_req_t* req, struct sockaddr_in);
 
-int uv_shutdown(uv_req_t* req);
+int uv_shutdown(UV_P_ uv_req_t* req);
 
-int uv_listen(uv_tcp_t* handle, int backlog, uv_connection_cb cb);
+int uv_listen(UV_P_ uv_tcp_t* handle, int backlog, uv_connection_cb cb);
 
 /* This call is used in conjunction with uv_listen() to accept incoming TCP
  * connections. Call uv_accept after receiving a uv_connection_cb to accept
@@ -237,7 +269,7 @@ int uv_listen(uv_tcp_t* handle, int backlog, uv_connection_cb cb);
  * once, it may fail. It is suggested to only call uv_accept once per
  * uv_connection_cb call.
  */
-int uv_accept(uv_tcp_t* server, uv_tcp_t* client);
+int uv_accept(UV_P_ uv_tcp_t* server, uv_tcp_t* client);
 
 /* Read data from an incoming stream. The callback will be made several
  * several times until there is no more data to read or uv_read_stop is
@@ -248,9 +280,9 @@ int uv_accept(uv_tcp_t* server, uv_tcp_t* client);
  * eof; it happens when libuv requested a buffer through the alloc callback
  * but then decided that it didn't need that buffer.
  */
-int uv_read_start(uv_tcp_t*, uv_alloc_cb alloc_cb, uv_read_cb read_cb);
+int uv_read_start(UV_P_ uv_tcp_t*, uv_alloc_cb alloc_cb, uv_read_cb read_cb);
 
-int uv_read_stop(uv_tcp_t*);
+int uv_read_stop(UV_P_ uv_tcp_t*);
 
 /* Write data to stream. Buffers are written in order. Example:
  *
@@ -269,7 +301,7 @@ int uv_read_stop(uv_tcp_t*);
  *   uv_write(req, b, 2);
  *
  */
-int uv_write(uv_req_t* req, uv_buf_t bufs[], int bufcnt);
+int uv_write(UV_P_ uv_req_t* req, uv_buf_t bufs[], int bufcnt);
 
 
 /*
@@ -282,11 +314,11 @@ struct uv_prepare_s {
   UV_PREPARE_PRIVATE_FIELDS
 };
 
-int uv_prepare_init(uv_prepare_t* prepare);
+int uv_prepare_init(UV_P_ uv_prepare_t* prepare);
 
-int uv_prepare_start(uv_prepare_t* prepare, uv_prepare_cb cb);
+int uv_prepare_start(UV_P_ uv_prepare_t* prepare, uv_prepare_cb cb);
 
-int uv_prepare_stop(uv_prepare_t* prepare);
+int uv_prepare_stop(UV_P_ uv_prepare_t* prepare);
 
 
 /*
@@ -299,11 +331,11 @@ struct uv_check_s {
   UV_CHECK_PRIVATE_FIELDS
 };
 
-int uv_check_init(uv_check_t* check);
+int uv_check_init(UV_P_ uv_check_t* check);
 
-int uv_check_start(uv_check_t* check, uv_check_cb cb);
+int uv_check_start(UV_P_ uv_check_t* check, uv_check_cb cb);
 
-int uv_check_stop(uv_check_t* check);
+int uv_check_stop(UV_P_ uv_check_t* check);
 
 
 /*
@@ -317,11 +349,11 @@ struct uv_idle_s {
   UV_IDLE_PRIVATE_FIELDS
 };
 
-int uv_idle_init(uv_idle_t* idle);
+int uv_idle_init(UV_P_ uv_idle_t* idle);
 
-int uv_idle_start(uv_idle_t* idle, uv_idle_cb cb);
+int uv_idle_start(UV_P_ uv_idle_t* idle, uv_idle_cb cb);
 
-int uv_idle_stop(uv_idle_t* idle);
+int uv_idle_stop(UV_P_ uv_idle_t* idle);
 
 
 /*
@@ -337,7 +369,7 @@ struct uv_async_s {
   UV_ASYNC_PRIVATE_FIELDS
 };
 
-int uv_async_init(uv_async_t* async, uv_async_cb async_cb);
+int uv_async_init(UV_P_ uv_async_t* async, uv_async_cb async_cb);
 
 int uv_async_send(uv_async_t* async);
 
@@ -351,18 +383,18 @@ struct uv_timer_s {
   UV_TIMER_PRIVATE_FIELDS
 };
 
-int uv_timer_init(uv_timer_t* timer);
+int uv_timer_init(UV_P_ uv_timer_t* timer);
 
-int uv_timer_start(uv_timer_t* timer, uv_timer_cb cb, int64_t timeout, int64_t repeat);
+int uv_timer_start(UV_P_ uv_timer_t* timer, uv_timer_cb cb, int64_t timeout, int64_t repeat);
 
-int uv_timer_stop(uv_timer_t* timer);
+int uv_timer_stop(UV_P_ uv_timer_t* timer);
 
 /*
  * Stop the timer, and if it is repeating restart it using the repeat value
  * as the timeout. If the timer has never been started before it returns -1 and
  * sets the error to UV_EINVAL.
  */
-int uv_timer_again(uv_timer_t* timer);
+int uv_timer_again(UV_P_ uv_timer_t* timer);
 
 /*
  * Set the repeat value. Note that if the repeat value is set from a timer
@@ -370,9 +402,9 @@ int uv_timer_again(uv_timer_t* timer);
  * before, it will have been stopped. If it was repeating, then the old repeat
  * value will have been used to schedule the next timeout.
  */
-void uv_timer_set_repeat(uv_timer_t* timer, int64_t repeat);
+void uv_timer_set_repeat(UV_P_ uv_timer_t* timer, int64_t repeat);
 
-int64_t uv_timer_get_repeat(uv_timer_t* timer);
+int64_t uv_timer_get_repeat(UV_P_ uv_timer_t* timer);
 
 
 /* c-ares integration initialize and terminate */
@@ -411,22 +443,30 @@ struct uv_getaddrinfo_s {
  * On error the user should then call uv_last_error() to determine
  * the error code.
  */
-uv_err_t uv_last_error();
-char* uv_strerror(uv_err_t err);
-const char* uv_err_name(uv_err_t err);
+uv_err_t uv_last_error(UV_P);
+char* uv_strerror(UV_P_ uv_err_t err);
+const char* uv_err_name(UV_P_ uv_err_t err);
 
+/* Initialize libuv. This also initializes the default event loop. */
 void uv_init();
-int uv_run();
+
+/* Event loops other than the default must be initialized before */
+/* to being used. */
+#if UV_MULTIPLICITY
+  int uv_loop_init(UV_P);
+#endif
+
+int uv_run(UV_P);
 
 /*
  * Manually modify the event loop's reference count. Useful if the user wants
  * to have a handle or timeout that doesn't keep the loop alive.
  */
-void uv_ref();
-void uv_unref();
+void uv_ref(UV_P);
+void uv_unref(UV_P);
 
-void uv_update_time();
-int64_t uv_now();
+void uv_update_time(UV_P);
+int64_t uv_now(UV_P);
 
 
 /* Utility */
@@ -434,7 +474,7 @@ struct sockaddr_in uv_ip4_addr(const char* ip, int port);
 struct sockaddr_in6 uv_ip6_addr(const char* ip, int port);
 
 /* Gets the executable path */
-int uv_exepath(char* buffer, size_t* size);
+int uv_exepath(UV_P_ char* buffer, size_t* size);
 
 /*
  * Returns the current high-resolution real time. This is expressed in
@@ -471,7 +511,7 @@ typedef struct {
   uint64_t timer_init;
 } uv_counters_t;
 
-uv_counters_t* uv_counters();
+uv_counters_t* uv_counters(UV_P);
 
 #ifdef __cplusplus
 }

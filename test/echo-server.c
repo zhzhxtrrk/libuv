@@ -35,19 +35,19 @@ static int server_closed;
 static uv_tcp_t server;
 
 
-static void after_write(uv_req_t* req, int status);
-static void after_read(uv_tcp_t*, ssize_t nread, uv_buf_t buf);
-static void on_close(uv_handle_t* peer);
-static void on_server_close(uv_handle_t* handle);
-static void on_connection(uv_tcp_t*, int status);
+static void after_write(UV_P_ uv_req_t* req, int status);
+static void after_read(UV_P_ uv_tcp_t*, ssize_t nread, uv_buf_t buf);
+static void on_close(UV_P_ uv_handle_t* peer);
+static void on_server_close(UV_P_ uv_handle_t* handle);
+static void on_connection(UV_P_ uv_tcp_t*, int status);
 
 
-static void after_write(uv_req_t* req, int status) {
+static void after_write(UV_P_ uv_req_t* req, int status) {
   write_req_t* wr;
 
   if (status) {
-    uv_err_t err = uv_last_error();
-    fprintf(stderr, "uv_write error: %s\n", uv_strerror(err));
+    uv_err_t err = uv_last_error(UV_A);
+    fprintf(stderr, "uv_write error: %s\n", uv_strerror(UV_A_ err));
     ASSERT(0);
   }
 
@@ -59,28 +59,28 @@ static void after_write(uv_req_t* req, int status) {
 }
 
 
-static void after_shutdown(uv_req_t* req, int status) {
-  uv_close(req->handle, on_close);
+static void after_shutdown(UV_P_ uv_req_t* req, int status) {
+  uv_close(UV_A_ req->handle, on_close);
   free(req);
 }
 
 
-static void after_read(uv_tcp_t* handle, ssize_t nread, uv_buf_t buf) {
+static void after_read(UV_P_ uv_tcp_t* handle, ssize_t nread, uv_buf_t buf) {
   int i;
   write_req_t *wr;
   uv_req_t* req;
 
   if (nread < 0) {
     /* Error or EOF */
-    ASSERT (uv_last_error().code == UV_EOF);
+    ASSERT (uv_last_error(UV_A).code == UV_EOF);
 
     if (buf.base) {
       free(buf.base);
     }
 
     req = (uv_req_t*) malloc(sizeof *req);
-    uv_req_init(req, (uv_handle_t*)handle, after_shutdown);
-    uv_shutdown(req);
+    uv_req_init(UV_A_ req, (uv_handle_t*)handle, after_shutdown);
+    uv_shutdown(UV_A_ req);
 
     return;
   }
@@ -95,7 +95,7 @@ static void after_read(uv_tcp_t* handle, ssize_t nread, uv_buf_t buf) {
   if (!server_closed) {
     for (i = 0; i < nread; i++) {
       if (buf.base[i] == 'Q') {
-        uv_close((uv_handle_t*)&server, on_server_close);
+        uv_close(UV_A_ (uv_handle_t*) &server, on_server_close);
         server_closed = 1;
       }
     }
@@ -103,21 +103,21 @@ static void after_read(uv_tcp_t* handle, ssize_t nread, uv_buf_t buf) {
 
   wr = (write_req_t*) malloc(sizeof *wr);
 
-  uv_req_init(&wr->req, (uv_handle_t*)handle, after_write);
+  uv_req_init(UV_A_ &wr->req, (uv_handle_t*)handle, after_write);
   wr->buf.base = buf.base;
   wr->buf.len = nread;
-  if (uv_write(&wr->req, &wr->buf, 1)) {
+  if (uv_write(UV_A_ &wr->req, &wr->buf, 1)) {
     FATAL("uv_write failed");
   }
 }
 
 
-static void on_close(uv_handle_t* peer) {
+static void on_close(UV_P_ uv_handle_t* peer) {
   free(peer);
 }
 
 
-static uv_buf_t echo_alloc(uv_tcp_t* handle, size_t suggested_size) {
+static uv_buf_t echo_alloc(UV_P_ uv_tcp_t* handle, size_t suggested_size) {
   uv_buf_t buf;
   buf.base = (char*) malloc(suggested_size);
   buf.len = suggested_size;
@@ -125,7 +125,7 @@ static uv_buf_t echo_alloc(uv_tcp_t* handle, size_t suggested_size) {
 }
 
 
-static void on_connection(uv_tcp_t* server, int status) {
+static void on_connection(UV_P_ uv_tcp_t* server, int status) {
   uv_tcp_t* handle;
   int r;
 
@@ -134,40 +134,40 @@ static void on_connection(uv_tcp_t* server, int status) {
   handle = (uv_tcp_t*) malloc(sizeof *handle);
   ASSERT(handle != NULL);
 
-  uv_tcp_init(handle);
+  uv_tcp_init(UV_A_ handle);
 
-  r = uv_accept(server, handle);
+  r = uv_accept(UV_A_ server, handle);
   ASSERT(r == 0);
 
-  r = uv_read_start(handle, echo_alloc, after_read);
+  r = uv_read_start(UV_A_ handle, echo_alloc, after_read);
   ASSERT(r == 0);
 }
 
 
-static void on_server_close(uv_handle_t* handle) {
-  ASSERT(handle == (uv_handle_t*)&server);
+static void on_server_close(UV_P_ uv_handle_t* handle) {
+  ASSERT(handle == (uv_handle_t*) &server);
 }
 
 
-static int echo_start(int port) {
+static int echo_start(UV_P_ int port) {
   struct sockaddr_in addr = uv_ip4_addr("0.0.0.0", port);
   int r;
 
-  r = uv_tcp_init(&server);
+  r = uv_tcp_init(UV_A_ &server);
   if (r) {
     /* TODO: Error codes */
     fprintf(stderr, "Socket creation error\n");
     return 1;
   }
 
-  r = uv_bind(&server, addr);
+  r = uv_bind(UV_A_ &server, addr);
   if (r) {
     /* TODO: Error codes */
     fprintf(stderr, "Bind error\n");
     return 1;
   }
 
-  r = uv_listen(&server, 128, on_connection);
+  r = uv_listen(UV_A_ &server, 128, on_connection);
   if (r) {
     /* TODO: Error codes */
     fprintf(stderr, "Listen error\n");
@@ -180,9 +180,10 @@ static int echo_start(int port) {
 
 HELPER_IMPL(echo_server) {
   uv_init();
-  if (echo_start(TEST_PORT))
+
+  if (echo_start(UV_DEFAULT_ TEST_PORT))
     return 1;
 
-  uv_run();
+  uv_run(UV_DEFAULT);
   return 0;
 }

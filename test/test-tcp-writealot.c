@@ -45,7 +45,7 @@ static int bytes_received = 0;
 static int bytes_received_done = 0;
 
 
-static uv_buf_t alloc_cb(uv_tcp_t* tcp, size_t size) {
+static uv_buf_t alloc_cb(UV_P_ uv_tcp_t* tcp, size_t size) {
   uv_buf_t buf;
   buf.base = (char*)malloc(size);
   buf.len = size;
@@ -53,7 +53,7 @@ static uv_buf_t alloc_cb(uv_tcp_t* tcp, size_t size) {
 }
 
 
-static void close_cb(uv_handle_t* handle) {
+static void close_cb(UV_P_ uv_handle_t* handle) {
   ASSERT(handle != NULL);
 
   free(handle);
@@ -62,7 +62,7 @@ static void close_cb(uv_handle_t* handle) {
 }
 
 
-static void shutdown_cb(uv_req_t* req, int status) {
+static void shutdown_cb(UV_P_ uv_req_t* req, int status) {
   uv_tcp_t* tcp;
 
   ASSERT(req);
@@ -83,18 +83,18 @@ static void shutdown_cb(uv_req_t* req, int status) {
 }
 
 
-static void read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
+static void read_cb(UV_P_ uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
   ASSERT(tcp != NULL);
 
   if (nread < 0) {
-    ASSERT(uv_last_error().code == UV_EOF);
+    ASSERT(uv_last_error(UV_A).code == UV_EOF);
     printf("GOT EOF\n");
 
     if (buf.base) {
       free(buf.base);
     }
 
-    uv_close((uv_handle_t*)tcp, close_cb);
+    uv_close(UV_A_ (uv_handle_t*)tcp, close_cb);
     return;
   }
 
@@ -104,12 +104,12 @@ static void read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
 }
 
 
-static void write_cb(uv_req_t* req, int status) {
+static void write_cb(UV_P_ uv_req_t* req, int status) {
   ASSERT(req != NULL);
 
   if (status) {
-    uv_err_t err = uv_last_error();
-    fprintf(stderr, "uv_write error: %s\n", uv_strerror(err));
+    uv_err_t err = uv_last_error(UV_A);
+    fprintf(stderr, "uv_write error: %s\n", uv_strerror(UV_A_ err));
     ASSERT(0);
   }
 
@@ -120,7 +120,7 @@ static void write_cb(uv_req_t* req, int status) {
 }
 
 
-static void connect_cb(uv_req_t* req, int status) {
+static void connect_cb(UV_P_ uv_req_t* req, int status) {
   uv_buf_t send_bufs[CHUNKS_PER_WRITE];
   uv_tcp_t* tcp;
   int i, j, r;
@@ -144,24 +144,24 @@ static void connect_cb(uv_req_t* req, int status) {
     req = (uv_req_t*)malloc(sizeof *req);
     ASSERT(req != NULL);
 
-    uv_req_init(req, (uv_handle_t*)tcp, write_cb);
-    r = uv_write(req, (uv_buf_t*)&send_bufs, CHUNKS_PER_WRITE);
+    uv_req_init(UV_A_ req, (uv_handle_t*)tcp, write_cb);
+    r = uv_write(UV_A_ req, (uv_buf_t*)&send_bufs, CHUNKS_PER_WRITE);
     ASSERT(r == 0);
   }
 
   /* Shutdown on drain. FIXME: dealloc req? */
   req = (uv_req_t*) malloc(sizeof(uv_req_t));
   ASSERT(req != NULL);
-  uv_req_init(req, (uv_handle_t*)tcp, shutdown_cb);
-  r = uv_shutdown(req);
+  uv_req_init(UV_A_ req, (uv_handle_t*)tcp, shutdown_cb);
+  r = uv_shutdown(UV_A_ req);
   ASSERT(r == 0);
 
   /* Start reading */
   req = (uv_req_t*)malloc(sizeof *req);
   ASSERT(req != NULL);
 
-  uv_req_init(req, (uv_handle_t*)tcp, read_cb);
-  r = uv_read_start(tcp, alloc_cb, read_cb);
+  uv_req_init(UV_A_ req, (uv_handle_t*)tcp, read_cb);
+  r = uv_read_start(UV_A_ tcp, alloc_cb, read_cb);
   ASSERT(r == 0);
 }
 
@@ -181,14 +181,14 @@ TEST_IMPL(tcp_writealot) {
 
   uv_init();
 
-  r = uv_tcp_init(client);
+  r = uv_tcp_init(UV_DEFAULT_ client);
   ASSERT(r == 0);
 
-  uv_req_init(connect_req, (uv_handle_t*)client, connect_cb);
-  r = uv_connect(connect_req, addr);
+  uv_req_init(UV_DEFAULT_ connect_req, (uv_handle_t*)client, connect_cb);
+  r = uv_connect(UV_DEFAULT_ connect_req, addr);
   ASSERT(r == 0);
 
-  uv_run();
+  uv_run(UV_DEFAULT);
 
   ASSERT(shutdown_cb_called == 1);
   ASSERT(connect_cb_called == 1);

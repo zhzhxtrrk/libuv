@@ -32,7 +32,7 @@ static int close_cb_called = 0;
 static int connect_cb_called = 0;
 
 
-static uv_buf_t alloc_cb(uv_tcp_t* tcp, size_t size) {
+static uv_buf_t alloc_cb(UV_P_ uv_tcp_t* tcp, size_t size) {
   uv_buf_t buf;
   buf.base = (char*)malloc(size);
   buf.len = size;
@@ -40,7 +40,7 @@ static uv_buf_t alloc_cb(uv_tcp_t* tcp, size_t size) {
 }
 
 
-static void close_cb(uv_handle_t* handle) {
+static void close_cb(UV_P_ uv_handle_t* handle) {
   ASSERT(handle != NULL);
 
   free(handle);
@@ -49,7 +49,7 @@ static void close_cb(uv_handle_t* handle) {
 }
 
 
-static void do_accept(uv_timer_t* timer_handle, int status) {
+static void do_accept(UV_P_ uv_timer_t* timer_handle, int status) {
   uv_tcp_t* server;
   uv_tcp_t* accepted_handle = (uv_tcp_t*)malloc(sizeof *accepted_handle);
   int r;
@@ -59,36 +59,36 @@ static void do_accept(uv_timer_t* timer_handle, int status) {
   ASSERT(status == 0);
   ASSERT(accepted_handle != NULL);
 
-  uv_tcp_init(accepted_handle);
+  uv_tcp_init(UV_A_ accepted_handle);
 
-  /* Test to that uv_counters()->tcp_init does not increase across the uv_accept. */
-  tcpcnt = uv_counters()->tcp_init;
+  /* Test to that uv_counters(UV_A)->tcp_init does not increase across the uv_accept. */
+  tcpcnt = uv_counters(UV_A)->tcp_init;
 
   server = (uv_tcp_t*)timer_handle->data;
-  r = uv_accept(server, accepted_handle);
+  r = uv_accept(UV_A_ server, accepted_handle);
   ASSERT(r == 0);
 
-  ASSERT(uv_counters()->tcp_init == tcpcnt);
+  ASSERT(uv_counters(UV_A)->tcp_init == tcpcnt);
 
   do_accept_called++;
 
   /* Immediately close the accepted handle. */
-  r = uv_close((uv_handle_t*)accepted_handle, close_cb);
+  r = uv_close(UV_A_ (uv_handle_t*)accepted_handle, close_cb);
   ASSERT(r == 0);
 
   /* After accepting the two clients close the server handle */
   if (do_accept_called == 2) {
-    r = uv_close((uv_handle_t*)server, close_cb);
+    r = uv_close(UV_A_ (uv_handle_t*)server, close_cb);
     ASSERT(r == 0);
   }
 
   /* Dispose the timer. */
-  r = uv_close((uv_handle_t*)timer_handle, close_cb);
+  r = uv_close(UV_A_ (uv_handle_t*)timer_handle, close_cb);
   ASSERT(r == 0);
 }
 
 
-static void connection_cb(uv_tcp_t* tcp, int status) {
+static void connection_cb(UV_P_ uv_tcp_t* tcp, int status) {
   int r;
   uv_timer_t* timer_handle;
 
@@ -98,58 +98,57 @@ static void connection_cb(uv_tcp_t* tcp, int status) {
   ASSERT(timer_handle != NULL);
 
   /* Accept the client after 1 second */
-  r = uv_timer_init(timer_handle);
+  r = uv_timer_init(UV_A_ timer_handle);
   ASSERT(r == 0);
 
   timer_handle->data = tcp;
 
-  r = uv_timer_start(timer_handle, do_accept, 1000, 0);
+  r = uv_timer_start(UV_A_ timer_handle, do_accept, 1000, 0);
   ASSERT(r == 0);
 
   connection_cb_called++;
 }
 
 
-static void start_server() {
+static void start_server(UV_P) {
   struct sockaddr_in addr = uv_ip4_addr("0.0.0.0", TEST_PORT);
   uv_tcp_t* server = (uv_tcp_t*)malloc(sizeof *server);
   int r;
 
   ASSERT(server != NULL);
 
-  r = uv_tcp_init(server);
+  r = uv_tcp_init(UV_A_ server);
   ASSERT(r == 0);
-  ASSERT(uv_counters()->tcp_init == 1);
-  ASSERT(uv_counters()->handle_init == 1);
+  ASSERT(uv_counters(UV_A)->tcp_init == 1);
+  ASSERT(uv_counters(UV_A)->handle_init == 1);
 
-  r = uv_bind(server, addr);
+  r = uv_bind(UV_A_ server, addr);
   ASSERT(r == 0);
 
-  r = uv_listen(server, 128, connection_cb);
+  r = uv_listen(UV_A_ server, 128, connection_cb);
   ASSERT(r == 0);
 }
 
 
-static void read_cb(uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
+static void read_cb(UV_P_ uv_tcp_t* tcp, ssize_t nread, uv_buf_t buf) {
   /* The server will not send anything, it should close gracefully. */
-
   if (buf.base) {
     free(buf.base);
   }
 
   if (nread != -1) {
     ASSERT(nread == 0);
-    ASSERT(uv_last_error().code == UV_EAGAIN);
+    ASSERT(uv_last_error(UV_A).code == UV_EAGAIN);
   } else {
     ASSERT(tcp != NULL);
     ASSERT(nread == -1);
-    ASSERT(uv_last_error().code == UV_EOF);
+    ASSERT(uv_last_error(UV_A).code == UV_EOF);
     uv_close((uv_handle_t*)tcp, close_cb);
   }
 }
 
 
-static void connect_cb(uv_req_t* req, int status) {
+static void connect_cb(UV_P_ uv_req_t* req, int status) {
   int r;
 
   ASSERT(req != NULL);
@@ -157,7 +156,7 @@ static void connect_cb(uv_req_t* req, int status) {
 
   /* Not that the server will send anything, but otherwise we'll never know */
   /* when te server closes the connection. */
-  r = uv_read_start((uv_tcp_t*)(req->handle), alloc_cb, read_cb);
+  r = uv_read_start(UV_A_ (uv_tcp_t*)(req->handle), alloc_cb, read_cb);
   ASSERT(r == 0);
 
   connect_cb_called++;
@@ -166,7 +165,7 @@ static void connect_cb(uv_req_t* req, int status) {
 }
 
 
-static void client_connect() {
+static void client_connect(UV_P) {
   struct sockaddr_in addr = uv_ip4_addr("127.0.0.1", TEST_PORT);
   uv_tcp_t* client = (uv_tcp_t*)malloc(sizeof *client);
   uv_req_t* connect_req = (uv_req_t*)malloc(sizeof *connect_req);
@@ -175,11 +174,11 @@ static void client_connect() {
   ASSERT(client != NULL);
   ASSERT(connect_req != NULL);
 
-  r = uv_tcp_init(client);
+  r = uv_tcp_init(UV_A_ client);
   ASSERT(r == 0);
 
-  uv_req_init(connect_req, (uv_handle_t*)client, connect_cb);
-  r = uv_connect(connect_req, addr);
+  uv_req_init(UV_A_ connect_req, (uv_handle_t*)client, connect_cb);
+  r = uv_connect(UV_A_ connect_req, addr);
   ASSERT(r == 0);
 }
 
@@ -188,12 +187,12 @@ static void client_connect() {
 TEST_IMPL(delayed_accept) {
   uv_init();
 
-  start_server();
+  start_server(UV_DEFAULT);
 
-  client_connect();
-  client_connect();
+  client_connect(UV_DEFAULT);
+  client_connect(UV_DEFAULT);
 
-  uv_run();
+  uv_run(UV_DEFAULT);
 
   ASSERT(connection_cb_called == 2);
   ASSERT(do_accept_called == 2);

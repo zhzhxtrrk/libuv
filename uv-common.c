@@ -37,12 +37,13 @@ static uv_ares_task_t* uv_ares_handles_ = NULL;
 static uv_counters_t counters;
 
 
-uv_counters_t* uv_counters() {
+uv_counters_t* uv_counters(UV_P) {
+  /* TODO: separate counters per loop? */
   return &counters;
 }
 
 
-const char* uv_err_name(uv_err_t err) {
+const char* uv_err_name(UV_P_ uv_err_t err) {
   switch (err.code) {
     case UV_UNKNOWN: return "UNKNOWN";
     case UV_OK: return "OK";

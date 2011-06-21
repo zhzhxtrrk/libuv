@@ -33,7 +33,7 @@ TEST_IMPL(get_currentexe) {
   int r;
 
   size = sizeof(buffer) / sizeof(buffer[0]);
-  r = uv_exepath(buffer, &size);
+  r = uv_exepath(UV_DEFAULT_ buffer, &size);
   ASSERT(!r);
 
   match = strstr(buffer, executable_path);
@@ -43,10 +43,10 @@ TEST_IMPL(get_currentexe) {
 
   /* Negative tests */
   size = sizeof(buffer) / sizeof(buffer[0]);
-  r = uv_exepath(NULL, &size);
+  r = uv_exepath(UV_DEFAULT_ NULL, &size);
   ASSERT(r == -1);
 
-  r = uv_exepath(buffer, NULL);
+  r = uv_exepath(UV_DEFAULT_ buffer, NULL);
   ASSERT(r == -1);
 
   return 0;

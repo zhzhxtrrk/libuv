@@ -43,21 +43,6 @@
 #endif
 
 
-static uv_err_t last_err;
-
-struct uv_ares_data_s {
-  ares_channel channel;
-  /*
-   * While the channel is active this timer is called once per second to be sure
-   * that we're always calling ares_process. See the warning above the
-   * definition of ares_timeout().
-   */
-  ev_timer timer;
-};
-
-static struct uv_ares_data_s ares_data;
-
-
 void uv__tcp_io(EV_P_ ev_io* watcher, int revents);
 void uv__next(EV_P_ ev_idle* watcher, int revents);
 static void uv__tcp_connect(uv_tcp_t*);
@@ -104,12 +89,12 @@ static void uv_fatal_error(const int errorno, const char* syscall) {
 }
 
 
-uv_err_t uv_last_error() {
-  return last_err;
+uv_err_t uv_last_error(UV_P) {
+  return UV_LOOP->last_err;
 }
 
 
-char* uv_strerror(uv_err_t err) {
+char* uv_strerror(UV_P_ uv_err_t err) {
   return strerror(err.sys_errno_);
 }
 
@@ -141,25 +126,25 @@ static uv_err_code uv_translate_sys_error(int sys_errno) {
 }
 
 
-static uv_err_t uv_err_new_artificial(uv_handle_t* handle, int code) {
+static uv_err_t uv_err_new_artificial(UV_P_ uv_handle_t* handle, int code) {
   uv_err_t err;
   err.sys_errno_ = 0;
   err.code = code;
-  last_err = err;
+  UV_LOOP->last_err = err;
   return err;
 }
 
 
-static uv_err_t uv_err_new(uv_handle_t* handle, int sys_error) {
+static uv_err_t uv_err_new(UV_P_ uv_handle_t* handle, int sys_error) {
   uv_err_t err;
   err.sys_errno_ = sys_error;
   err.code = uv_translate_sys_error(sys_error);
-  last_err = err;
+  UV_LOOP->last_err = err;
   return err;
 }
 
 
-int uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
+int uv_close(UV_P_ uv_handle_t* handle, uv_close_cb close_cb) {
   uv_tcp_t* tcp;
   uv_async_t* async;
   uv_timer_t* timer;
@@ -174,15 +159,15 @@ int uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
       break;
 
     case UV_PREPARE:
-      uv_prepare_stop((uv_prepare_t*) handle);
+      uv_prepare_stop(UV_A_ (uv_prepare_t*) handle);
       break;
 
     case UV_CHECK:
-      uv_check_stop((uv_check_t*) handle);
+      uv_check_stop(UV_A_ (uv_check_t*) handle);
       break;
 
     case UV_IDLE:
-      uv_idle_stop((uv_idle_t*) handle);
+      uv_idle_stop(UV_A_ (uv_idle_t*) handle);
       break;
 
     case UV_ASYNC:
@@ -215,7 +200,11 @@ int uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
 }
 
 
-void uv_init() {
+int uv_loop_init(UV_P) {
+}
+
+
+void uv_init(UV_P) {
   /* Initialize the default ev loop. */
 #if defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
   ev_default_loop(EVBACKEND_KQUEUE);
@@ -225,8 +214,8 @@ void uv_init() {
 }
 
 
-int uv_run() {
-  ev_run(EV_DEFAULT_ 0);
+int uv_run(UV_P) {
+  ev_run(UV_LOOP->loop, 0);
   return 0;
 }
 

@@ -444,8 +444,8 @@ struct uv_getaddrinfo_s {
  * the error code.
  */
 uv_err_t uv_last_error(UV_P);
-char* uv_strerror(UV_P_ uv_err_t err);
-const char* uv_err_name(UV_P_ uv_err_t err);
+char* uv_strerror(UV_P_ uv_err_t err); /* TODO no UV_P argument */
+const char* uv_err_name(UV_P_ uv_err_t err); /* TODO no UV_P argument */
 
 /* Initialize libuv. This also initializes the default event loop. */
 void uv_init();
@@ -474,7 +474,7 @@ struct sockaddr_in uv_ip4_addr(const char* ip, int port);
 struct sockaddr_in6 uv_ip6_addr(const char* ip, int port);
 
 /* Gets the executable path */
-int uv_exepath(UV_P_ char* buffer, size_t* size);
+int uv_exepath(UV_P_ char* buffer, size_t* size); /* TODO no UV_P argument */
 
 /*
  * Returns the current high-resolution real time. This is expressed in

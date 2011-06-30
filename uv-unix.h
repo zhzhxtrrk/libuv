@@ -39,6 +39,24 @@ typedef struct {
   size_t len;
 } uv_buf_t;
 
+#if UV_MULTIPLICITY
+# define UV_LOOP_ELEMENT struct ev_loop* loop;
+#else
+# define UV_LOOP_ELEMENT
+#endif
+
+
+#define UV_LOOP_PRIVATE_FIELDS \
+  ares_channel ares_channel; \
+  /* \
+   * While the channel is active this timer is called once per second to be sure \
+   * that we're always calling ares_process. See the warning above the \
+   * definition of ares_timeout(). \
+   */ \
+  ev_timer ares_timer; \
+  uv_err_t last_err; \
+  UV_LOOP_ELEMENT
+
 
 #define UV_REQ_PRIVATE_FIELDS \
   int write_index; \

@@ -167,6 +167,33 @@
           'sources': [ '../test/runner-unix.c' ] 
         }]
       ] 
+    },
+
+    {
+      'target_name': 'run-benchmarks',
+      'type': 'executable',
+      'dependencies': [ 'uv' ],
+      'sources': [
+        '../test/runner.c',
+        '../test/run-benchmarks.c',
+        '../test/echo-server.c',
+        '../test/dns-server.c',
+        '../test/benchmark-ares.c',
+        '../test/benchmark-getaddrinfo.c',
+        '../test/benchmark-ping-pongs.c',
+        '../test/benchmark-pump.c',
+        '../test/benchmark-sizes.c',
+        '../test/benchmark-spawn.c'
+      ],
+      'conditions': [
+        [ 'OS=="win"', {
+          'sources': [ '../test/runner-win.c' ] 
+        }, { # POSIX
+          'cflags': [ '_GNU_SOURCE' ],
+          'ldflags': [ '-pthread' ],
+          'sources': [ '../test/runner-unix.c' ] 
+        }]
+      ] 
     }
   ]
 }

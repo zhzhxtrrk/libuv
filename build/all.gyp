@@ -90,7 +90,7 @@
         }, { # Not Windows i.e. POSIX
           'cflags': [
             '-g',
-            '--std=c89',
+            '--std=gnu89',
             '-pedantic',
             '-Wall',
             '-Wextra',
@@ -122,7 +122,18 @@
             'EIO_CONFIG_H="config_darwin.h"',
           ]
         }],
-        # TODO add OS=='linux', OS=='sun'
+        [ 'OS=="linux"', {
+          'include_dirs': [ '../src/ares/config_linux' ],
+          'sources': [ '../src/uv-linux.c' ],
+          'defines': [
+            'EV_CONFIG_H="config_linux.h"',
+            'EIO_CONFIG_H="config_linux.h"',
+          ],
+          'direct_dependent_settings': {
+            'libraries': [ '-lrt' ],
+          },
+        }],
+        # TODO add OS=='sun'
       ]
     },
 
@@ -162,7 +173,7 @@
         [ 'OS=="win"', {
           'sources': [ '../test/runner-win.c' ] 
         }, { # POSIX
-          'cflags': [ '_GNU_SOURCE' ],
+          'defines': [ '_GNU_SOURCE' ],
           'ldflags': [ '-pthread' ],
           'sources': [ '../test/runner-unix.c' ] 
         }]

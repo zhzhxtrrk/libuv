@@ -1,119 +1,347 @@
-# Copyright Joyent, Inc. and other Node contributors. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to
-# deal in the Software without restriction, including without limitation the
-# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
-# sell copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-# IN THE SOFTWARE.
+# We borrow heavily from the kernel build setup, though we are simpler since
+# we don't have Kconfig tweaking settings on us.
 
-uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+# The implicit make rules have it looking for RCS files, among other things.
+# We instead explicitly write all the rules we care about.
+# It's even quicker (saves ~200ms) to pass -r on the command line.
+MAKEFLAGS=-r
 
-ifdef MSVC
-uname_S := MINGW
-endif
+# The source directory tree.
+srcdir := .
 
-CPPFLAGS += -Iinclude
+# The name of the builddir.
+builddir_name ?= out
 
-CARES_OBJS =
-CARES_OBJS += src/ares/ares__close_sockets.o
-CARES_OBJS += src/ares/ares__get_hostent.o
-CARES_OBJS += src/ares/ares__read_line.o
-CARES_OBJS += src/ares/ares__timeval.o
-CARES_OBJS += src/ares/ares_cancel.o
-CARES_OBJS += src/ares/ares_data.o
-CARES_OBJS += src/ares/ares_destroy.o
-CARES_OBJS += src/ares/ares_expand_name.o
-CARES_OBJS += src/ares/ares_expand_string.o
-CARES_OBJS += src/ares/ares_fds.o
-CARES_OBJS += src/ares/ares_free_hostent.o
-CARES_OBJS += src/ares/ares_free_string.o
-CARES_OBJS += src/ares/ares_gethostbyaddr.o
-CARES_OBJS += src/ares/ares_gethostbyname.o
-CARES_OBJS += src/ares/ares_getnameinfo.o
-CARES_OBJS += src/ares/ares_getopt.o
-CARES_OBJS += src/ares/ares_getsock.o
-CARES_OBJS += src/ares/ares_init.o
-CARES_OBJS += src/ares/ares_library_init.o
-CARES_OBJS += src/ares/ares_llist.o
-CARES_OBJS += src/ares/ares_mkquery.o
-CARES_OBJS += src/ares/ares_nowarn.o
-CARES_OBJS += src/ares/ares_options.o
-CARES_OBJS += src/ares/ares_parse_a_reply.o
-CARES_OBJS += src/ares/ares_parse_aaaa_reply.o
-CARES_OBJS += src/ares/ares_parse_mx_reply.o
-CARES_OBJS += src/ares/ares_parse_ns_reply.o
-CARES_OBJS += src/ares/ares_parse_ptr_reply.o
-CARES_OBJS += src/ares/ares_parse_srv_reply.o
-CARES_OBJS += src/ares/ares_parse_txt_reply.o
-CARES_OBJS += src/ares/ares_process.o
-CARES_OBJS += src/ares/ares_query.o
-CARES_OBJS += src/ares/ares_search.o
-CARES_OBJS += src/ares/ares_send.o
-CARES_OBJS += src/ares/ares_strcasecmp.o
-CARES_OBJS += src/ares/ares_strdup.o
-CARES_OBJS += src/ares/ares_strerror.o
-CARES_OBJS += src/ares/ares_timeout.o
-CARES_OBJS += src/ares/ares_version.o
-CARES_OBJS += src/ares/ares_writev.o
-CARES_OBJS += src/ares/bitncmp.o
-CARES_OBJS += src/ares/inet_net_pton.o
-CARES_OBJS += src/ares/inet_ntop.o
-
-ifneq (,$(findstring MINGW,$(uname_S)))
-include config-mingw.mk
+# The V=1 flag on command line makes us verbosely print command lines.
+ifdef V
+  quiet=
 else
-include config-unix.mk
+  quiet=quiet_
 endif
 
-TESTS=test/echo-server.c test/test-*.c
-BENCHMARKS=test/echo-server.c test/dns-server.c test/benchmark-*.c
+# Specify BUILDTYPE=Release on the command line for a release build.
+BUILDTYPE ?= Default
 
-all: uv.a test/run-tests test/run-benchmarks
+# Directory all our build output goes into.
+# Note that this must be two directories beneath src/ for unit tests to pass,
+# as they reach into the src/ directory for data with relative paths.
+builddir ?= $(builddir_name)/$(BUILDTYPE)
+abs_builddir := $(abspath $(builddir))
+depsdir := $(builddir)/.deps
 
-$(CARES_OBJS): %.o: %.c
-	$(CC) -o $*.o -c $(CFLAGS) $(CPPFLAGS) $< -DHAVE_CONFIG_H
+# Object output directory.
+obj := $(builddir)/obj
+abs_obj := $(abspath $(obj))
 
-test/run-tests$(E): test/*.h test/run-tests.c $(RUNNER_SRC) test/runner-unix.c $(TESTS) uv.a
-	$(CC) $(CPPFLAGS) $(RUNNER_CFLAGS) $(RUNNER_LINKFLAGS) -o test/run-tests test/run-tests.c \
-		test/runner.c $(RUNNER_SRC) $(TESTS) uv.a $(RUNNER_LIBS)
+# We build up a list of every single one of the targets so we can slurp in the
+# generated dependency rule Makefiles in one pass.
+all_deps :=
 
-test/run-benchmarks$(E): test/*.h test/run-benchmarks.c test/runner.c $(RUNNER_SRC) $(BENCHMARKS) uv.a
-	$(CC) $(CPPFLAGS) $(RUNNER_CFLAGS) $(RUNNER_LINKFLAGS) -o test/run-benchmarks test/run-benchmarks.c \
-		 test/runner.c $(RUNNER_SRC) $(BENCHMARKS) uv.a $(RUNNER_LIBS)
+# C++ apps need to be linked with g++.  Not sure what's appropriate.
+#
+# Note, the flock is used to seralize linking. Linking is a memory-intensive
+# process so running parallel links can often lead to thrashing.  To disable
+# the serialization, override FLOCK via an envrionment variable as follows:
+#
+#   export FLOCK=
+#
+# This will allow make to invoke N linker processes as specified in -jN.
+FLOCK ?= ./gyp-mac-tool flock $(builddir)/linker.lock
+LINK ?= $(FLOCK) $(CXX)
 
-test/echo.o: test/echo.c test/echo.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c test/echo.c -o test/echo.o
+CC.target ?= $(CC)
+CFLAGS.target ?= $(CFLAGS)
+CXX.target ?= $(CXX)
+CXXFLAGS.target ?= $(CXXFLAGS)
+LINK.target ?= $(LINK)
+LDFLAGS.target ?= $(LDFLAGS) 
+AR.target ?= $(AR)
+ARFLAGS.target ?= crs
+
+# N.B.: the logic of which commands to run should match the computation done
+# in gyp's make.py where ARFLAGS.host etc. is computed.
+# TODO(evan): move all cross-compilation logic to gyp-time so we don't need
+# to replicate this environment fallback in make as well.
+CC.host ?= gcc
+CFLAGS.host ?=
+CXX.host ?= g++
+CXXFLAGS.host ?=
+LINK.host ?= g++
+LDFLAGS.host ?=
+AR.host ?= ar
+ARFLAGS.host := crs
+
+# Define a dir function that can handle spaces.
+# http://www.gnu.org/software/make/manual/make.html#Syntax-of-Functions
+# "leading spaces cannot appear in the text of the first argument as written.
+# These characters can be put into the argument value by variable substitution."
+empty :=
+space := $(empty) $(empty)
+
+# http://stackoverflow.com/questions/1189781/using-make-dir-or-notdir-on-a-path-with-spaces
+replace_spaces = $(subst $(space),?,$1)
+unreplace_spaces = $(subst ?,$(space),$1)
+dirx = $(call unreplace_spaces,$(dir $(call replace_spaces,$1)))
+
+# Flags to make gcc output dependency info.  Note that you need to be
+# careful here to use the flags that ccache and distcc can understand.
+# We write to a dep file on the side first and then rename at the end
+# so we can't end up with a broken dep file.
+depfile = $(depsdir)/$(call replace_spaces,$@).d
+DEPFLAGS = -MMD -MF $(depfile).raw
+
+# We have to fixup the deps output in a few ways.
+# (1) the file output should mention the proper .o file.
+# ccache or distcc lose the path to the target, so we convert a rule of
+# the form:
+#   foobar.o: DEP1 DEP2
+# into
+#   path/to/foobar.o: DEP1 DEP2
+# (2) we want missing files not to cause us to fail to build.
+# We want to rewrite
+#   foobar.o: DEP1 DEP2 \
+#               DEP3
+# to
+#   DEP1:
+#   DEP2:
+#   DEP3:
+# so if the files are missing, they're just considered phony rules.
+# We have to do some pretty insane escaping to get those backslashes
+# and dollar signs past make, the shell, and sed at the same time.
+# Doesn't work with spaces, but that's fine: .d files have spaces in
+# their names replaced with other characters.
+define fixup_dep
+# The depfile may not exist if the input file didn't have any #includes.
+touch $(depfile).raw
+# Fixup path as in (1).
+sed -e "s|^$(notdir $@)|$@|" $(depfile).raw >> $(depfile)
+# Add extra rules as in (2).
+# We remove slashes and replace spaces with new lines;
+# remove blank lines;
+# delete the first line and append a colon to the remaining lines.
+sed -e 's|\\||' -e 'y| |\n|' $(depfile).raw |\
+  grep -v '^$$'                             |\
+  sed -e 1d -e 's|$$|:|'                     \
+    >> $(depfile)
+rm $(depfile).raw
+endef
+
+# Command definitions:
+# - cmd_foo is the actual command to run;
+# - quiet_cmd_foo is the brief-output summary of the command.
+
+quiet_cmd_cc = CC($(TOOLSET)) $@
+cmd_cc = $(CC.$(TOOLSET)) $(GYP_CFLAGS) $(DEPFLAGS) $(CFLAGS.$(TOOLSET)) -c -o $@ $<
+
+quiet_cmd_cxx = CXX($(TOOLSET)) $@
+cmd_cxx = $(CXX.$(TOOLSET)) $(GYP_CXXFLAGS) $(DEPFLAGS) $(CXXFLAGS.$(TOOLSET)) -c -o $@ $<
+
+quiet_cmd_objc = CXX($(TOOLSET)) $@
+cmd_objc = $(CC.$(TOOLSET)) $(GYP_OBJCFLAGS) $(DEPFLAGS) -c -o $@ $<
+
+quiet_cmd_objcxx = CXX($(TOOLSET)) $@
+cmd_objcxx = $(CXX.$(TOOLSET)) $(GYP_OBJCXXFLAGS) $(DEPFLAGS) -c -o $@ $<
+
+# Commands for precompiled header files.
+quiet_cmd_pch_c = CXX($(TOOLSET)) $@
+cmd_pch_c = $(CC.$(TOOLSET)) $(GYP_PCH_CFLAGS) $(DEPFLAGS) $(CXXFLAGS.$(TOOLSET)) -c -o $@ $<
+quiet_cmd_pch_cc = CXX($(TOOLSET)) $@
+cmd_pch_cc = $(CC.$(TOOLSET)) $(GYP_PCH_CCFLAGS) $(DEPFLAGS) $(CXXFLAGS.$(TOOLSET)) -c -o $@ $<
+quiet_cmd_pch_m = CXX($(TOOLSET)) $@
+cmd_pch_m = $(CC.$(TOOLSET)) $(GYP_PCH_OBJCFLAGS) $(DEPFLAGS) -c -o $@ $<
+quiet_cmd_pch_mm = CXX($(TOOLSET)) $@
+cmd_pch_mm = $(CC.$(TOOLSET)) $(GYP_PCH_OBJCXXFLAGS) $(DEPFLAGS) -c -o $@ $<
+
+# gyp-mac-tool is written next to the root Makefile by gyp.
+# Use #(3) for the command, since $(2) is used as flag by do_cmd already.
+quiet_cmd_mac_tool = MACTOOL $(3) $<
+cmd_mac_tool = ./gyp-mac-tool $(3) $< "$@"
+
+quiet_cmd_mac_package_framework = PACKAGE FRAMEWORK $@
+cmd_mac_package_framework = ./gyp-mac-tool package-framework "$@" $(3)
+
+quiet_cmd_alink = AR($(TOOLSET)) $@
+cmd_alink = rm -f $@ && $(AR.$(TOOLSET)) $(ARFLAGS.$(TOOLSET)) $@ $(filter %.o,$^)
+
+quiet_cmd_touch = TOUCH $@
+cmd_touch = touch $@
+
+quiet_cmd_copy = COPY $@
+# send stderr to /dev/null to ignore messages when linking directories.
+cmd_copy = ln -f "$<" "$@" 2>/dev/null || (rm -rf "$@" && cp -af "$<" "$@")
+
+quiet_cmd_link = LINK($(TOOLSET)) $@
+cmd_link = $(LINK.$(TOOLSET)) $(GYP_LDFLAGS) $(LDFLAGS.$(TOOLSET)) -o "$@" $(LD_INPUTS) $(LIBS)
+
+# TODO(thakis): Find out and document the difference between shared_library and
+# loadable_module on mac.
+quiet_cmd_solink = SOLINK($(TOOLSET)) $@
+cmd_solink = $(LINK.$(TOOLSET)) -shared $(GYP_LDFLAGS) $(LDFLAGS.$(TOOLSET)) -o "$@" $(LD_INPUTS) $(LIBS)
+
+# TODO(thakis): The solink_module rule is likely wrong. Xcode seems to pass
+# -bundle -single_module here (for osmesa.so).
+quiet_cmd_solink_module = SOLINK_MODULE($(TOOLSET)) $@
+cmd_solink_module = $(LINK.$(TOOLSET)) -shared $(GYP_LDFLAGS) $(LDFLAGS.$(TOOLSET)) -o $@ $(filter-out FORCE_DO_CMD, $^) $(LIBS)
 
 
-.PHONY: clean clean-platform distclean distclean-platform test bench
+# Define an escape_quotes function to escape single quotes.
+# This allows us to handle quotes properly as long as we always use
+# use single quotes and escape_quotes.
+escape_quotes = $(subst ','\'',$(1))
+# This comment is here just to include a ' to unconfuse syntax highlighting.
+# Define an escape_vars function to escape '$' variable syntax.
+# This allows us to read/write command lines with shell variables (e.g.
+# $LD_LIBRARY_PATH), without triggering make substitution.
+escape_vars = $(subst $$,$$$$,$(1))
+# Helper that expands to a shell command to echo a string exactly as it is in
+# make. This uses printf instead of echo because printf's behaviour with respect
+# to escape sequences is more portable than echo's across different shells
+# (e.g., dash, bash).
+exact_echo = printf '%s\n' '$(call escape_quotes,$(1))'
+
+# Helper to compare the command we're about to run against the command
+# we logged the last time we ran the command.  Produces an empty
+# string (false) when the commands match.
+# Tricky point: Make has no string-equality test function.
+# The kernel uses the following, but it seems like it would have false
+# positives, where one string reordered its arguments.
+#   arg_check = $(strip $(filter-out $(cmd_$(1)), $(cmd_$@)) \
+#                       $(filter-out $(cmd_$@), $(cmd_$(1))))
+# We instead substitute each for the empty string into the other, and
+# say they're equal if both substitutions produce the empty string.
+# .d files contain ? instead of spaces, take that into account.
+command_changed = $(or $(subst $(cmd_$(1)),,$(cmd_$(call replace_spaces,$@))),\
+                       $(subst $(cmd_$(call replace_spaces,$@)),,$(cmd_$(1))))
+
+# Helper that is non-empty when a prerequisite changes.
+# Normally make does this implicitly, but we force rules to always run
+# so we can check their command lines.
+#   $? -- new prerequisites
+#   $| -- order-only dependencies
+prereq_changed = $(filter-out $|,$?)
+
+# do_cmd: run a command via the above cmd_foo names, if necessary.
+# Should always run for a given target to handle command-line changes.
+# Second argument, if non-zero, makes it do asm/C/C++ dependency munging.
+# Note: We intentionally do NOT call dirx for depfile, since it contains ? for
+# spaces already and dirx strips the ? characters.
+define do_cmd
+$(if $(or $(command_changed),$(prereq_changed)),
+  @$(call exact_echo,  $($(quiet)cmd_$(1)))
+  @mkdir -p "$(call dirx,$@)" "$(dir $(depfile))"
+  $(if $(findstring flock,$(word 2,$(cmd_$1))),
+    @$(cmd_$(1))
+    @echo "  $(quiet_cmd_$(1)): Finished",
+    @$(cmd_$(1))
+  )
+  @$(call exact_echo,$(call escape_vars,cmd_$(call replace_spaces,$@) := $(cmd_$(1)))) > $(depfile)
+  @$(if $(2),$(fixup_dep))
+)
+endef
+
+# Declare "all" target first so it is the default, even though we don't have the
+# deps yet.
+.PHONY: all
+all:
+
+# Use FORCE_DO_CMD to force a target to run.  Should be coupled with
+# do_cmd.
+.PHONY: FORCE_DO_CMD
+FORCE_DO_CMD:
+
+TOOLSET := target
+# Suffix rules, putting all outputs into $(obj).
+$(obj).$(TOOLSET)/%.o: $(srcdir)/%.c FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
+$(obj).$(TOOLSET)/%.o: $(srcdir)/%.cc FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(srcdir)/%.cpp FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(srcdir)/%.cxx FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(srcdir)/%.m FORCE_DO_CMD
+	@$(call do_cmd,objc,1)
+$(obj).$(TOOLSET)/%.o: $(srcdir)/%.mm FORCE_DO_CMD
+	@$(call do_cmd,objcxx,1)
+$(obj).$(TOOLSET)/%.o: $(srcdir)/%.S FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
+$(obj).$(TOOLSET)/%.o: $(srcdir)/%.s FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
+
+# Try building from generated source, too.
+$(obj).$(TOOLSET)/%.o: $(obj).$(TOOLSET)/%.c FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
+$(obj).$(TOOLSET)/%.o: $(obj).$(TOOLSET)/%.cc FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(obj).$(TOOLSET)/%.cpp FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(obj).$(TOOLSET)/%.cxx FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(obj).$(TOOLSET)/%.m FORCE_DO_CMD
+	@$(call do_cmd,objc,1)
+$(obj).$(TOOLSET)/%.o: $(obj).$(TOOLSET)/%.mm FORCE_DO_CMD
+	@$(call do_cmd,objcxx,1)
+$(obj).$(TOOLSET)/%.o: $(obj).$(TOOLSET)/%.S FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
+$(obj).$(TOOLSET)/%.o: $(obj).$(TOOLSET)/%.s FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
+
+$(obj).$(TOOLSET)/%.o: $(obj)/%.c FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
+$(obj).$(TOOLSET)/%.o: $(obj)/%.cc FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(obj)/%.cpp FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(obj)/%.cxx FORCE_DO_CMD
+	@$(call do_cmd,cxx,1)
+$(obj).$(TOOLSET)/%.o: $(obj)/%.m FORCE_DO_CMD
+	@$(call do_cmd,objc,1)
+$(obj).$(TOOLSET)/%.o: $(obj)/%.mm FORCE_DO_CMD
+	@$(call do_cmd,objcxx,1)
+$(obj).$(TOOLSET)/%.o: $(obj)/%.S FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
+$(obj).$(TOOLSET)/%.o: $(obj)/%.s FORCE_DO_CMD
+	@$(call do_cmd,cc,1)
 
 
-test: test/run-tests$(E)
-	test/run-tests
+ifeq ($(strip $(foreach prefix,$(NO_LOAD),\
+    $(findstring $(join ^,$(prefix)),\
+                 $(join ^,build/run-tests.target.mk)))),)
+  include build/run-tests.target.mk
+endif
+ifeq ($(strip $(foreach prefix,$(NO_LOAD),\
+    $(findstring $(join ^,$(prefix)),\
+                 $(join ^,build/uv.target.mk)))),)
+  include build/uv.target.mk
+endif
 
-#test-%:	test/run-tests$(E)
-#	test/run-tests $(@:test-%=%)
+quiet_cmd_regen_makefile = ACTION Regenerating $@
+cmd_regen_makefile = ./build/gyp_uv -fmake --ignore-environment "--toplevel-dir=." "--depth=." build/all.gyp
+Makefile: build/all.gyp
+	$(call do_cmd,regen_makefile)
 
-bench: test/run-benchmarks$(E)
-	test/run-benchmarks
+# "all" is a concatenation of the "all" targets from all the included
+# sub-makefiles. This is just here to clarify.
+all:
 
-#bench-%:	test/run-benchmarks$(E)
-#	test/run-benchmarks $(@:bench-%=%)
+# Add in dependency-tracking rules.  $(all_deps) is the list of every single
+# target in our tree. Only consider the ones with .d (dependency) info:
+d_files := $(wildcard $(foreach f,$(all_deps),$(depsdir)/$(f).d))
+ifneq ($(d_files),)
+  # Rather than include each individual .d file, concatenate them into a
+  # single file which make is able to load faster.  We split this into
+  # commands that take 1000 files at a time to avoid overflowing the
+  # command line.
+  $(shell cat $(wordlist 1,1000,$(d_files)) > $(depsdir)/all.deps)
 
-clean: clean-platform
-	$(RM) -f src/*.o *.a test/run-tests$(E) test/run-benchmarks$(E)
+  ifneq ($(word 1001,$(d_files)),)
+    $(error Found unprocessed dependency files (gyp didn't generate enough rules!))
+  endif
 
-distclean: distclean-platform
-	$(RM) -f src/*.o *.a test/run-tests$(E) test/run-benchmarks$(E)
+  # make looks for ways to re-generate included makefiles, but in our case, we
+  # don't have a direct way. Explicitly telling make that it has nothing to do
+  # for them makes it go faster.
+  $(depsdir)/all.deps: ;
+
+  include $(depsdir)/all.deps
+endif

@@ -200,7 +200,7 @@
         [ 'OS=="win"', {
           'sources': [ '../test/runner-win.c' ] 
         }, { # POSIX
-          'cflags': [ '_GNU_SOURCE' ],
+          'defines': [ '_GNU_SOURCE' ],
           'ldflags': [ '-pthread' ],
           'sources': [ '../test/runner-unix.c' ] 
         }]

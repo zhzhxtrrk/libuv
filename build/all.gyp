@@ -12,8 +12,6 @@
       ],
       'sources': [
         '../src/uv-common.c',
-        '../src/uv-eio.c',
-        '../src/eio/eio.c',
         '../src/ares/ares__close_sockets.c',
         '../src/ares/ares__get_hostent.c',
         '../src/ares/ares__read_line.c',
@@ -64,9 +62,8 @@
             '../src/ares/config_win32'
           ],
           'sources': [ '../src/ares/windows_port.c' ],
-          'libraries': [ '-lws2_32', '-lm' ],
           'defines': [
-            '_WIN32_WINNT=0x0501',
+            '_WIN32_WINNT=0x0502',
             'EIO_STACKSIZE=262144',
             '_GNU_SOURCE',
           ],
@@ -97,6 +94,8 @@
             '-Wno-unused-parameter'
           ],
           'sources': [
+            '../src/uv-eio.c',
+            '../src/eio/eio.c',
             '../src/uv-unix.c',
             '../src/ev/ev.c',
           ],
@@ -171,7 +170,8 @@
       ],
       'conditions': [
         [ 'OS=="win"', {
-          'sources': [ '../test/runner-win.c' ] 
+          'sources': [ '../test/runner-win.c' ],
+          'libraries': [ 'ws2_32.lib' ]
         }, { # POSIX
           'defines': [ '_GNU_SOURCE' ],
           'ldflags': [ '-pthread' ],
@@ -198,7 +198,8 @@
       ],
       'conditions': [
         [ 'OS=="win"', {
-          'sources': [ '../test/runner-win.c' ] 
+          'sources': [ '../test/runner-win.c' ],
+          'libraries': [ 'ws2_32.lib' ]
         }, { # POSIX
           'defines': [ '_GNU_SOURCE' ],
           'ldflags': [ '-pthread' ],

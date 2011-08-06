@@ -30,13 +30,13 @@ if __name__ == '__main__':
   args.append('--depth=' + uv_root)
 
   # There's a bug with windows which doesn't allow this feature.
-  #if sys.platform != 'win32':
+  if sys.platform != 'win32':
 
-  # Tell gyp to write the Makefiles into output_dir
-  args.extend(['--generator-output', output_dir])
+    # Tell gyp to write the Makefiles into output_dir
+    args.extend(['--generator-output', output_dir])
 
-  # Tell make to write its output into the same dir
-  args.extend(['-Goutput_dir=' + output_dir])
+    # Tell make to write its output into the same dir
+    args.extend(['-Goutput_dir=' + output_dir])
 
   gyp_args = list(args)
   run_gyp(gyp_args)

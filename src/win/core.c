@@ -35,12 +35,59 @@
 uv_loop_t uv_main_loop_;
 
 
+#ifdef IOCP_FUNNEL
+static DWORD WINAPI iocp_funnel_pump(void* arg) {
+  BOOL success;
+  DWORD bytes;
+  ULONG_PTR key;
+  OVERLAPPED* overlapped;
+
+  for (;;) {
+    success = GetQueuedCompletionStatus(LOOP->iocp,
+                                        &bytes,
+                                        &key,
+                                        &overlapped,
+                                        INFINITE);
+
+    if (overlapped) {
+      if (!success) {
+        overlapped->Internal = GetLastError();
+      } else {
+        overlapped->Internal = 0;
+      }
+
+      if (!PostQueuedCompletionStatus(LOOP->iocp2,
+                                      bytes,
+                                      key,
+                                      overlapped)) {
+        return 0;
+      }
+
+    } else {
+      return 0;
+    }
+  }
+}
+#endif
+
+
 static void uv_loop_init() {
   /* Create an I/O completion port */
   LOOP->iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
   if (LOOP->iocp == NULL) {
     uv_fatal_error(GetLastError(), "CreateIoCompletionPort");
   }
+
+#ifdef IOCP_FUNNEL
+  LOOP->iocp2 = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
+  if (LOOP->iocp2 == NULL) {
+    uv_fatal_error(GetLastError(), "CreateIoCompletionPort");
+  }
+
+  if (NULL == CreateThread(NULL, 0, iocp_funnel_pump, NULL, 0, NULL)) {
+    uv_fatal_error(GetLastError(), "CreateThread");
+  }
+#endif
 
   LOOP->refs = 0;
 
@@ -101,19 +148,33 @@ static void uv_poll(int block) {
     timeout = 0;
   }
 
+#ifdef IOCP_FUNNEL
+  success = GetQueuedCompletionStatus(LOOP->iocp2,
+                                      &bytes,
+                                      &key,
+                                      &overlapped,
+                                      timeout);
+#else
   success = GetQueuedCompletionStatus(LOOP->iocp,
                                       &bytes,
                                       &key,
                                       &overlapped,
                                       timeout);
+#endif
 
   if (overlapped) {
     /* Package was dequeued */
     req = uv_overlapped_to_req(overlapped);
 
+#ifdef IOCP_FUNNEL
+    if (overlapped->Internal) {
+      req->error = uv_new_sys_error(overlapped->Internal);
+    }
+#else
     if (!success) {
       req->error = uv_new_sys_error(GetLastError());
     }
+#endif
 
     uv_insert_pending_req(req);
 

@@ -28,6 +28,8 @@
 #include "tree.h"
 #include "ntdll.h"
 
+//#undef IOCP_FUNNEL
+#define IOCP_FUNNEL 1
 
 /*
  * Timers
@@ -49,6 +51,9 @@ void uv_process_timers();
 typedef struct uv_loop_s {
   /* The loop's I/O completion port */
   HANDLE iocp;
+#ifdef IOCP_FUNNEL
+  HANDLE iocp2;
+#endif
   /* Reference count that keeps the event loop alive */
   int refs;
   /* The current time according to the event loop. in msecs. */

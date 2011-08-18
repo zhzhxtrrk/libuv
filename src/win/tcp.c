@@ -103,6 +103,12 @@
 #endif
 
 
+/* 
+ * Threshold of active tcp streams for which to preallocate tcp read buffers.
+ */
+const UINT uv_active_tcp_streams_threshold = 50;
+
+
 /* Pointers to winsock extension functions to be retrieved dynamically */
 static LPFN_CONNECTEX               pConnectEx;
 static LPFN_ACCEPTEX                pAcceptEx;
@@ -479,9 +485,9 @@ static void uv_tcp_queue_read(uv_tcp_t* handle) {
 
   /* 
    * Preallocate a read buffer if the number of active streams is below
-   * the threshold of 50.
+   * the threshold.
   */
-  if (active_tcp_streams < 50) {
+  if (active_tcp_streams < uv_active_tcp_streams_threshold) {
     handle->flags &= ~UV_HANDLE_TCP_ZERO_READ;
     handle->read_buffer = handle->alloc_cb((uv_stream_t*)handle, 65536);
     assert(handle->read_buffer.len > 0);
@@ -793,7 +799,7 @@ void uv_process_tcp_read_req(uv_tcp_t* handle, uv_req_t* req) {
   handle->flags &= ~UV_HANDLE_READ_PENDING;
 
   if (req->error.code != UV_OK) {
-    /* An error occurred doing the 0-read. */
+    /* An error occurred doing the read. */
     if ((handle->flags & UV_HANDLE_READING)) {
       handle->flags &= ~UV_HANDLE_READING;
       LOOP->last_error = req->error;
@@ -802,23 +808,31 @@ void uv_process_tcp_read_req(uv_tcp_t* handle, uv_req_t* req) {
       handle->read_cb((uv_stream_t*)handle, -1, buf);
     }
   } else {
-    if ((handle->flags & UV_HANDLE_READING) && !(handle->flags & UV_HANDLE_TCP_ZERO_READ)) {
-      if (req->overlapped.InternalHigh > 0) {
-        /* Successful read */
-        handle->read_cb((uv_stream_t*)handle, req->overlapped.InternalHigh, handle->read_buffer);
-        /* Read again only if bytes == buf.len */
-        if (req->overlapped.InternalHigh < handle->read_buffer.len) {
+    if (!(handle->flags & UV_HANDLE_TCP_ZERO_READ)) {
+      /* The read was done with a non-zero buffer length. */
+      if (handle->flags & UV_HANDLE_READING) {
+        if (req->overlapped.InternalHigh > 0) {
+          /* Successful read */
+          handle->read_cb((uv_stream_t*)handle, req->overlapped.InternalHigh, handle->read_buffer);
+          /* Read again only if bytes == buf.len */
+          if (req->overlapped.InternalHigh < handle->read_buffer.len) {
+            goto done;
+          }
+        } else {
+          /* Connection closed */
+          handle->flags &= ~UV_HANDLE_READING;
+          handle->flags |= UV_HANDLE_EOF;
+          LOOP->last_error.code = UV_EOF;
+          LOOP->last_error.sys_errno_ = ERROR_SUCCESS;
+          buf.base = 0;
+          buf.len = 0;
+          handle->read_cb((uv_stream_t*)handle, -1, handle->read_buffer);
           goto done;
         }
       } else {
-        /* Connection closed */
-        handle->flags &= ~UV_HANDLE_READING;
-        handle->flags |= UV_HANDLE_EOF;
-        LOOP->last_error.code = UV_EOF;
-        LOOP->last_error.sys_errno_ = ERROR_SUCCESS;
-        buf.base = 0;
-        buf.len = 0;
-        handle->read_cb((uv_stream_t*)handle, -1, buf);
+        /* Report 0-byte read to give the caller a chance to free the buffer. */
+        uv_set_sys_error(WSAEWOULDBLOCK);
+        handle->read_cb((uv_stream_t*)handle, 0, handle->read_buffer);
         goto done;
       }
     }
@@ -867,7 +881,7 @@ void uv_process_tcp_read_req(uv_tcp_t* handle, uv_req_t* req) {
     }
 
 done:
-    /* Post another 0-read if still reading and not closing. */
+    /* Post another read if still reading and not closing. */
     if ((handle->flags & UV_HANDLE_READING) &&
         !(handle->flags & UV_HANDLE_READ_PENDING)) {
       uv_tcp_queue_read(handle);

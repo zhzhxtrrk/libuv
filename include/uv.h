@@ -894,6 +894,8 @@ struct uv_fs_s {
   UV_FS_PRIVATE_FIELDS
 };
 
+#define UV_FS_SYMLINK_DIR          0x0001
+
 void uv_fs_req_cleanup(uv_fs_t* req);
 
 int uv_fs_close(uv_loop_t* loop, uv_fs_t* req, uv_file file, uv_fs_cb cb);
@@ -949,7 +951,7 @@ int uv_fs_link(uv_loop_t* loop, uv_fs_t* req, const char* path,
     const char* new_path, uv_fs_cb cb);
 
 int uv_fs_symlink(uv_loop_t* loop, uv_fs_t* req, const char* path,
-    const char* new_path, uv_fs_cb cb);
+    const char* new_path, int flags, uv_fs_cb cb);
 
 int uv_fs_readlink(uv_loop_t* loop, uv_fs_t* req, const char* path,
     uv_fs_cb cb);

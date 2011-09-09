@@ -453,6 +453,7 @@ int uv_spawn_sync(uv_loop_t* loop, uv_spawn_sync_t* spawn) {
     if (spawn->stdout_buf && FD_ISSET(stdout_pipe[0], &pipes)) {
       if (spawn->stdout_size - spawn->stdout_read <= 0) {
         /* Check for buffer overflow. */
+        uv_err_new_artificial(loop, UV_ENOBUFS);
         goto error;
       }
 
@@ -460,8 +461,6 @@ int uv_spawn_sync(uv_loop_t* loop, uv_spawn_sync_t* spawn) {
 
       /* @TODO HANDLE EAGAIN / EINTR */
       if (r == -1) {
-        /*uv_err_new(loop, errno);*/
-        /* TODO return -1 */
         perror("read");
         goto error;
       }
@@ -472,6 +471,7 @@ int uv_spawn_sync(uv_loop_t* loop, uv_spawn_sync_t* spawn) {
     if (spawn->stderr_buf && FD_ISSET(stderr_pipe[0], &pipes)) {
       if (spawn->stderr_size - spawn->stderr_read <= 0) {
         /* Check for buffer overflow. */
+        uv_err_new_artificial(loop, UV_ENOBUFS);
         goto error;
       }
 
@@ -532,5 +532,5 @@ error:
   }
 
   kill(spawn->pid, SIGKILL);
-  return 0;
+  return -1;
 }

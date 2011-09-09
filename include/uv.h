@@ -894,6 +894,7 @@ typedef struct uv_spawn_sync_t{
   int stderr_read;
 
   int pid;
+  int exit_timeout;
   int exit_code;
   int exit_signal;
 } uv_spawn_sync_t;

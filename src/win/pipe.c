@@ -747,7 +747,10 @@ int uv_pipe_write(uv_loop_t* loop, uv_write_t* req, uv_pipe_t* handle,
   req->type = UV_WRITE;
   req->handle = (uv_stream_t*) handle;
   req->cb = cb;
+  req->done = 0;
   memset(&req->overlapped, 0, sizeof(req->overlapped));
+
+  uv_insert_pending_write_req((uv_stream_t*)handle, req);
 
   result = WriteFile(handle->handle,
                      bufs[0].base,
@@ -886,22 +889,38 @@ void uv_process_pipe_write_req(uv_loop_t* loop, uv_pipe_t* handle,
 
   handle->write_queue_size -= req->queued_bytes;
 
-  if (req->cb) {
-    if (!REQ_SUCCESS(req)) {
-      loop->last_error = GET_REQ_UV_ERROR(req);
-      ((uv_write_cb)req->cb)(req, -1);
-    } else {
-      ((uv_write_cb)req->cb)(req, 0);
+  req->done = 1;
+
+  while (handle->write_reqs_tail) {
+    req = handle->write_reqs_tail->next_write;
+
+    if (!req->done) {
+      break;
     }
-  }
 
-  handle->write_reqs_pending--;
-  if (handle->write_reqs_pending == 0 &&
-      handle->flags & UV_HANDLE_SHUTTING) {
-    uv_want_endgame(loop, (uv_handle_t*)handle);
-  }
+    if (req == handle->write_reqs_tail) {
+      handle->write_reqs_tail = NULL;
+    } else {
+      handle->write_reqs_tail->next_write = req->next_write;
+    }
 
-  DECREASE_PENDING_REQ_COUNT(handle);
+    if (req->cb) {
+      if (!REQ_SUCCESS(req)) {
+        loop->last_error = GET_REQ_UV_ERROR(req);
+        ((uv_write_cb)req->cb)(req, -1);
+      } else {
+        ((uv_write_cb)req->cb)(req, 0);
+      }
+    }
+
+    handle->write_reqs_pending--;
+    if (handle->flags & UV_HANDLE_SHUTTING &&
+        handle->write_reqs_pending == 0) {
+      uv_want_endgame(loop, (uv_handle_t*)handle);
+    }
+
+    DECREASE_PENDING_REQ_COUNT(handle);
+  }
 }
 
 

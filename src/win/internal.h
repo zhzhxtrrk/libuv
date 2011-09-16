@@ -110,6 +110,7 @@ void uv_process_reqs(uv_loop_t* loop);
  */
 void uv_stream_init(uv_loop_t* loop, uv_stream_t* handle);
 void uv_connection_init(uv_stream_t* handle);
+void uv_insert_pending_write_req(uv_stream_t* handle, uv_write_t* req);
 
 size_t uv_count_bufs(uv_buf_t bufs[], int count);
 

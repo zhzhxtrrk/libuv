@@ -41,10 +41,24 @@ void uv_stream_init(uv_loop_t* loop, uv_stream_t* handle) {
 void uv_connection_init(uv_stream_t* handle) {
   handle->flags |= UV_HANDLE_CONNECTION;
   handle->write_reqs_pending = 0;
+  handle->write_reqs_tail = NULL;
 
   uv_req_init(handle->loop, (uv_req_t*) &(handle->read_req));
   handle->read_req.type = UV_READ;
   handle->read_req.data = handle;
+}
+
+
+void uv_insert_pending_write_req(uv_stream_t* handle, uv_write_t* req) {
+  req->next_write = NULL;
+  if (handle->write_reqs_tail) {
+    req->next_write = handle->write_reqs_tail->next_write;
+    handle->write_reqs_tail->next_write = req;
+    handle->write_reqs_tail = req;
+  } else {
+    req->next_write = req;
+    handle->write_reqs_tail = req;
+  }
 }
 
 

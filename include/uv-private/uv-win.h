@@ -99,7 +99,8 @@ RB_HEAD(uv_timer_tree_s, uv_timer_s);
   struct uv_req_s* next_req;
 
 #define UV_WRITE_PRIVATE_FIELDS           \
-  /* empty */
+  int done;                               \
+  uv_write_t* next_write;
 
 #define UV_CONNECT_PRIVATE_FIELDS         \
   /* empty */
@@ -125,6 +126,7 @@ RB_HEAD(uv_timer_tree_s, uv_timer_s);
 
 #define uv_stream_connection_fields       \
   unsigned int write_reqs_pending;        \
+  uv_write_t* write_reqs_tail;            \
   uv_shutdown_t* shutdown_req;
 
 #define uv_stream_server_fields           \

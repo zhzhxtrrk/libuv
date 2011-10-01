@@ -814,7 +814,7 @@ done:
 static int duplicate_std_handle(uv_loop_t* loop, DWORD id, HANDLE* dup) {
   HANDLE handle;
   HANDLE current_process = GetCurrentProcess();
-  
+
   handle = GetStdHandle(id);
 
   if (handle == NULL) {
@@ -1042,4 +1042,108 @@ int uv_process_kill(uv_process_t* process, int signum) {
   }
 
   return -1;
+}
+
+static void uv_spawn_sync_exit_cb(uv_process_t* process, int exit_code,
+    int term_signal) {
+
+  uv_spawn_sync_t* spawn_sync = (uv_spawn_sync_t*) process->data;
+  spawn_sync->exit_code = exit_code;
+  spawn_sync->exit_signal = term_signal;
+
+  /* Close the process handle */
+  uv_close((uv_handle_t*) process, NULL);
+
+  /* Close the pipes */
+  uv_close((uv_handle_t*) &spawn_sync->stdin_pipe, NULL);
+  uv_close((uv_handle_t*) &spawn_sync->stdout_pipe, NULL);
+  uv_close((uv_handle_t*) &spawn_sync->stderr_pipe, NULL);
+}
+
+
+static void spawn_sync_read_cb(uv_stream_t* handle, int nread, uv_buf_t buf) {
+  uv_spawn_sync_t* spawn_sync = (uv_spawn_sync_t*) handle->data;
+
+  if (nread < 0) {
+    if (uv_last_error(handle->loop).code == UV_EOF) {
+      // Pipe was closed
+      return;
+    } else {
+      // Read error. TODO: kill the process?
+      return;
+    }
+  }
+
+  if (handle == (uv_stream_t*) &spawn_sync->stdout_pipe) {
+    spawn_sync->stdout_read += nread;
+    if (spawn_sync->stdout_read == spawn_sync->stderr_size) {
+      uv_read_stop(handle);
+    }
+  } else if (handle == (uv_stream_t*) &spawn_sync->stderr_pipe) {
+    spawn_sync->stderr_read += nread;
+    if (spawn_sync->stderr_read == spawn_sync->stderr_size) {
+      uv_read_stop(handle);
+    }
+  } else {
+    abort();
+  }
+}
+
+
+static uv_buf_t spawn_sync_alloc_cb(uv_handle_t* handle, size_t suggested_size) {
+  uv_buf_t buf;
+  uv_spawn_sync_t* spawn_sync = (uv_spawn_sync_t*) handle->data;
+
+  /* Todo: handle overflows */
+
+  if (handle == (uv_handle_t*) &spawn_sync->stdout_pipe) {
+    buf.base = spawn_sync->stdout_buf + spawn_sync->stdout_read;
+    buf.len = spawn_sync->stdout_size - spawn_sync->stdout_read;
+  } else if (handle == (uv_handle_t*) &spawn_sync->stderr_pipe) {
+    buf.base = spawn_sync->stderr_buf + spawn_sync->stderr_read;
+    buf.len = spawn_sync->stderr_size - spawn_sync->stderr_read;
+  } else {
+    abort();
+  }
+
+  return buf;
+}
+
+
+int uv_spawn_sync(uv_loop_t* main_loop, uv_spawn_sync_t* spawn_sync) {
+  uv_loop_t subloop;
+  uv_process_t process;
+  uv_process_options_t process_options;
+
+  uv_loop_init(&subloop);
+
+  uv_pipe_init(&subloop, &spawn_sync->stdin_pipe);
+  uv_pipe_init(&subloop, &spawn_sync->stdout_pipe);
+  uv_pipe_init(&subloop, &spawn_sync->stderr_pipe);
+
+  memset((char*) &process_options, 0, sizeof process_options);
+  process_options.args = spawn_sync->args;
+  process_options.cwd = NULL;
+  process_options.env = NULL;
+  process_options.exit_cb = uv_spawn_sync_exit_cb;
+  process_options.file  = spawn_sync->file;
+  process_options.stdin_stream = &spawn_sync->stdin_pipe;
+  process_options.stdout_stream = &spawn_sync->stdout_pipe;
+  process_options.stderr_stream = &spawn_sync->stderr_pipe;
+
+  if (uv_spawn(&subloop, &process, process_options) != 0) {
+    // Handle error. Difficult, must actually clean up all the mess we made
+    // so far (e.g. the loop, stdio pipes etc). Prolly just uv_run() the loop
+    // until it dies?
+  }
+
+  uv_read_start((uv_stream_t*) &spawn_sync->stdout_pipe, spawn_sync_alloc_cb, spawn_sync_read_cb);
+  uv_read_start((uv_stream_t*) &spawn_sync->stderr_pipe, spawn_sync_alloc_cb, spawn_sync_read_cb);
+
+  process.data = spawn_sync;
+  spawn_sync->stdin_pipe.data = spawn_sync;
+  spawn_sync->stdout_pipe.data = spawn_sync;
+  spawn_sync->stderr_pipe.data = spawn_sync;
+
+  uv_run(&subloop);
 }

@@ -51,6 +51,8 @@ static void init_process_options(char* test) {
 }
 
 void debug(int r) {
+  uv_err_t err;
+
   fprintf(stderr, "----------------------------------------\n");
   fprintf(stderr, "r: %i\n", r);
   fprintf(stderr, "spawn.pid: %i\n", spawn.pid);
@@ -74,7 +76,7 @@ void debug(int r) {
   fprintf(stderr, "spawn.exit_code: %i\n", spawn.exit_code);
   fprintf(stderr, "spawn.exit_signal: %i\n", spawn.exit_signal);
 
-  uv_err_t err = uv_last_error(uv_default_loop());
+  err = uv_last_error(uv_default_loop());
   fprintf(stderr, "uv_last_error_name: %s\n", uv_err_name(err));
   fprintf(stderr, "uv_strerror: %s\n", uv_strerror(err));
   fprintf(stderr, "----------------------------------------\n");
@@ -82,7 +84,6 @@ void debug(int r) {
 
 TEST_IMPL(spawn_sync_exit_code) {
   int r;
-  uv_init();
 
   init_process_options("spawn_helper_exit_code");
 
@@ -92,14 +93,15 @@ TEST_IMPL(spawn_sync_exit_code) {
   ASSERT(spawn.pid >= 0);
   ASSERT(r == 0);
   ASSERT(spawn.exit_code == 1);
+#ifndef _WIN32
   ASSERT(spawn.exit_signal == -1);
+#endif
 
   return 0;
 }
 
 TEST_IMPL(spawn_sync_exit_signal) {
   int r;
-  uv_init();
 
   init_process_options("spawn_helper_exit_signal");
 
@@ -107,7 +109,9 @@ TEST_IMPL(spawn_sync_exit_signal) {
   debug(r);
 
   ASSERT(r == 0);
+#ifndef _WIN32
   ASSERT(spawn.exit_signal == SIGKILL);
+#endif
   ASSERT(spawn.exit_code == -1);
 
   return 0;
@@ -117,7 +121,6 @@ TEST_IMPL(spawn_sync_stdio) {
   int r;
   char *expected_stdout = "stdout\n";
   char *expected_stderr = "stderr\n";
-  uv_init();
 
   init_process_options("spawn_helper_stdout_stderr");
 
@@ -136,7 +139,6 @@ TEST_IMPL(spawn_sync_stdio) {
 TEST_IMPL(spawn_sync_stdout) {
   int r;
   char *expected_stdout = "stdout\n";
-  uv_init();
 
   init_process_options("spawn_helper_stdout_stderr");
 
@@ -146,7 +148,7 @@ TEST_IMPL(spawn_sync_stdout) {
   debug(r);
 
   ASSERT(r == 0);
-  ASSERT(strcmp(spawn.stdout_buf, expected_stdout) == 0);
+  ASSERT(strncmp(spawn.stdout_buf, expected_stdout, strlen(expected_stdout)) == 0);
   ASSERT(spawn.stdout_read == strlen(expected_stdout));
   ASSERT(spawn.stderr_read == 0);
 
@@ -156,7 +158,6 @@ TEST_IMPL(spawn_sync_stdout) {
 TEST_IMPL(spawn_sync_stderr) {
   int r;
   char *expected_stderr = "stderr\n";
-  uv_init();
 
   init_process_options("spawn_helper_stdout_stderr");
 
@@ -175,7 +176,6 @@ TEST_IMPL(spawn_sync_stderr) {
 
 TEST_IMPL(spawn_sync_stdout_overflow) {
   int r;
-  uv_init();
 
   init_process_options("spawn_helper_stdout_stderr");
 
@@ -193,7 +193,6 @@ TEST_IMPL(spawn_sync_stdout_overflow) {
 
 TEST_IMPL(spawn_sync_stderr_overflow) {
   int r;
-  uv_init();
 
   init_process_options("spawn_helper_stdout_stderr");
 
@@ -212,7 +211,6 @@ TEST_IMPL(spawn_sync_stderr_overflow) {
 TEST_IMPL(spawn_sync_combine_stdio) {
   int r;
   char *expected_stdout = "stdout\nstderr\n";
-  uv_init();
 
   init_process_options("spawn_helper_stdout_stderr");
 
@@ -231,7 +229,6 @@ TEST_IMPL(spawn_sync_combine_stdio) {
 
 TEST_IMPL(spawn_sync_stdin) {
   int r;
-  uv_init();
 
   init_process_options("spawn_helper_stdin");
 
@@ -250,7 +247,6 @@ TEST_IMPL(spawn_sync_stdin) {
 
 TEST_IMPL(spawn_sync_stdin_stream) {
   int r;
-  uv_init();
 
   init_process_options("spawn_helper_stdin_stream");
 
@@ -271,7 +267,6 @@ TEST_IMPL(spawn_sync_stdin_stream) {
 
 TEST_IMPL(spawn_sync_timeout) {
   int r;
-  uv_init();
 
   init_process_options("spawn_helper_timeout");
 

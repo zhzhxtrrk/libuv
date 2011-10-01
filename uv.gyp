@@ -260,6 +260,7 @@
         'test/test-ref.c',
         'test/test-shutdown-eof.c',
         'test/test-spawn.c',
+        'test/test-spawn-sync.c',
         'test/test-tcp-bind-error.c',
         'test/test-tcp-bind6-error.c',
         'test/test-tcp-close.c',

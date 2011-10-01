@@ -54,7 +54,7 @@ static void uv_init(void) {
 }
 
 
-static void uv_loop_init(uv_loop_t* loop) {
+void uv_loop_init(uv_loop_t* loop) {
   /* Create an I/O completion port */
   loop->iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
   if (loop->iocp == NULL) {

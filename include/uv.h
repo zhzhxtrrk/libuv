@@ -901,6 +901,12 @@ typedef struct uv_spawn_sync_t{
   int exit_timeout;
   int exit_code;
   int exit_signal;
+
+  /* private */
+  uv_pipe_t stdin_pipe;
+  uv_pipe_t stdout_pipe;
+  uv_pipe_t stderr_pipe;
+
 } uv_spawn_sync_t;
 
 int uv_spawn_sync(uv_loop_t* loop, uv_spawn_sync_t* spawn_sync);
@@ -1167,6 +1173,8 @@ struct uv_loop_s {
   /* User data - use this for whatever. */
   void* data;
 };
+
+void uv_loop_init(uv_loop_t* loop);
 
 
 /* Don't export the private CPP symbols. */

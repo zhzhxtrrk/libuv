@@ -22,7 +22,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <unistd.h>
+#ifndef _MSC_VER
+# include <unistd.h>
+#else
+# include <io.h>
+#endif
+
 #include "runner.h"
 #include "task.h"
 
@@ -115,8 +120,26 @@ static int maybe_run_test(int argc, char **argv) {
   }
 
   if (strcmp(argv[1], "spawn_helper_stdout_stderr") == 0) {
-    fprintf(stdout, "stdout\n");
-    fprintf(stderr, "stderr\n");
+    const char stdout_text[] = "stdout\n";
+    const char stderr_text[] = "stderr\n";
+
+#ifndef _WIN32
+    fprintf(stdout, stdout_text);
+    fprintf(stderr, stderr_text);
+#else
+    /* windows rage: can't tell crt to not convert line endings on stdout */
+    DWORD written;
+    WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),
+              (void*) stdout_text,
+              strlen(stdout_text),
+              &written,
+              NULL);
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE),
+              (void*) stderr_text,
+              strlen(stderr_text),
+              &written,
+              NULL);
+#endif
     return 0;
   }
 

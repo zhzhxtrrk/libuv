@@ -84,8 +84,6 @@ typedef struct _AFD_RECV_INFO {
     ULONG BufferCount;
     ULONG AfdFlags;
     ULONG TdiFlags;
-    struct sockaddr* Address;
-    int* AddressLength;
 } AFD_RECV_INFO, *PAFD_RECV_INFO;
 
 

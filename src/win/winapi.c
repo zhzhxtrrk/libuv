@@ -62,7 +62,7 @@ void uv_winapi_init() {
       ntdll_module,
       "NtDeviceIoControlFile");
   if (pNtDeviceIoControlFile == NULL) {
-    uv_fatal_error(GetLastError(), "NtDeviceIoControlFile");
+    uv_fatal_error(GetLastError(), "GetProcAddress");
   }
 
   pNtSetInformationFile = (sNtSetInformationFile) GetProcAddress(

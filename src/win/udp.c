@@ -109,6 +109,8 @@ static int uv_udp_set_socket(uv_loop_t* loop, uv_udp_t* handle,
           FILE_SKIP_SET_EVENT_ON_HANDLE |
           FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)) {
         handle->flags |= UV_HANDLE_SYNC_BYPASS_IOCP;
+        handle->func_wsarecv = uv_wsarecv_workaround;
+        handle->func_wsarecvfrom = uv_wsarecvfrom_workaround;
       } else if (GetLastError() != ERROR_INVALID_FUNCTION) {
         uv__set_sys_error(loop, GetLastError());
         return -1;
@@ -128,6 +130,8 @@ int uv_udp_init(uv_loop_t* loop, uv_udp_t* handle) {
   handle->reqs_pending = 0;
   handle->loop = loop;
   handle->flags = 0;
+  handle->func_wsarecv = WSARecv;
+  handle->func_wsarecvfrom = WSARecvFrom;
 
   uv_req_init(loop, (uv_req_t*) &(handle->recv_req));
   handle->recv_req.type = UV_UDP_RECV;
@@ -254,11 +258,6 @@ static void uv_udp_queue_recv(uv_loop_t* loop, uv_udp_t* handle) {
   uv_buf_t buf;
   DWORD bytes, flags;
   int result;
-  int (WSAAPI *recvfrom)(SOCKET, WSABUF*, DWORD, DWORD*, DWORD*,
-      struct sockaddr*, int*, WSAOVERLAPPED*,
-      LPWSAOVERLAPPED_COMPLETION_ROUTINE);
-  int (WSAAPI *recv)(SOCKET, WSABUF*, DWORD, DWORD*, DWORD*,
-      WSAOVERLAPPED*, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
 
   assert(handle->flags & UV_HANDLE_READING);
   assert(!(handle->flags & UV_HANDLE_READ_PENDING));
@@ -281,21 +280,15 @@ static void uv_udp_queue_recv(uv_loop_t* loop, uv_udp_t* handle) {
     handle->recv_from_len = sizeof handle->recv_from;
     flags = 0;
 
-    if (handle->flags & UV_HANDLE_SYNC_BYPASS_IOCP) {
-      recvfrom = uv_wsarecvfrom_workaround;
-    } else {
-      recvfrom = WSARecvFrom;
-    }
-
-    result = recvfrom(handle->socket,
-                      (WSABUF*) &buf,
-                      1,
-                      &bytes,
-                      &flags,
-                      (struct sockaddr*) &handle->recv_from,
-                      &handle->recv_from_len,
-                      &req->overlapped,
-                      NULL);
+    result = handle->func_wsarecvfrom(handle->socket,
+                                      (WSABUF*) &buf,
+                                      1,
+                                      &bytes,
+                                      &flags,
+                                      (struct sockaddr*) &handle->recv_from,
+                                      &handle->recv_from_len,
+                                      &req->overlapped,
+                                      NULL);
 
     if (UV_SUCCEEDED_WITHOUT_IOCP(result == 0)) {
       /* Process the req without IOCP. */
@@ -321,19 +314,13 @@ static void uv_udp_queue_recv(uv_loop_t* loop, uv_udp_t* handle) {
     buf.len = 0;
     flags = MSG_PEEK;
 
-    if (handle->flags & UV_HANDLE_SYNC_BYPASS_IOCP) {
-      recv = uv_wsarecv_workaround;
-    } else {
-      recv = WSARecv;
-    }
-
-    result = recv(handle->socket,
-                  (WSABUF*) &buf,
-                  1,
-                  &bytes,
-                  &flags,
-                  &req->overlapped,
-                  NULL);
+    result = handle->func_wsarecv(handle->socket,
+                                  (WSABUF*) &buf,
+                                  1,
+                                  &bytes,
+                                  &flags,
+                                  &req->overlapped,
+                                  NULL);
 
     if (UV_SUCCEEDED_WITHOUT_IOCP(result == 0)) {
       /* Process the req without IOCP. */

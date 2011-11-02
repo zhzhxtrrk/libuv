@@ -1062,22 +1062,23 @@ static uv_err_t uv__kill(HANDLE process_handle, int signum) {
   if (signum == SIGTERM || signum == SIGKILL) {
     /* Kill the process. On Windows, killed processes normally return 1. */
     if (TerminateProcess(process_handle, 1)) {
-      return uv_ok_;
+      err = uv_ok_;
     } else {
-      return uv__new_sys_error(GetLastError());
+      err = uv__new_sys_error(GetLastError());
     }
   } else if (signum == 0) {
     /* Health check: is the process still alive? */
     if (GetExitCodeProcess(process_handle, &status) &&
         status == STILL_ACTIVE) {
-      return uv_ok_;
+      err =  uv_ok_;
     } else {
-      err.code = UV_EINVAL;
-      return err;
+      err = uv__new_sys_error(GetLastError());
     }
+  } else {
+    err.code = UV_ENOSYS;
   }
 
-  return uv_ok_;
+  return err;
 }
 
 
@@ -1108,8 +1109,7 @@ uv_err_t uv_kill(int pid, int signum) {
     PROCESS_QUERY_INFORMATION, FALSE, pid);
 
   if (process_handle == INVALID_HANDLE_VALUE) {
-    err.code = UV_EINVAL;
-    return err;
+    return uv__new_sys_error(GetLastError());
   }
 
   err = uv__kill(process_handle, signum);

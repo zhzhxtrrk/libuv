@@ -72,7 +72,7 @@ static void kill_cb(uv_process_t* process, int exit_status, int term_signal) {
    * child process is still alive, not kill it.
    */
   err = uv_kill(process->pid, 0);
-  ASSERT(err.code == UV_EINVAL);
+  ASSERT(err.code != UV_OK);
 }
 
 

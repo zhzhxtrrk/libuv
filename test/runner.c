@@ -191,7 +191,7 @@ out:
   }
 
   /* Show error and output from processes if the test failed. */
-  if (status != 0) {
+  if (status != 0 || task->show_output) {
     LOGF("\n`%s` failed: %s\n", test, errmsg);
 
     for (i = 0; i < process_count; i++) {

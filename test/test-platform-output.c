@@ -62,6 +62,7 @@ TEST_IMPL(platform_output) {
   uv_free_cpu_info(cpus, count);
 
   err = uv_interface_addresses(&interfaces, &count);
+  ASSERT(UV_OK == err.code);
 
   fprintf(stderr, "uv_interface_addresses:\n");
   for (i = 0; i < count; i++) {

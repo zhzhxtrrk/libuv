@@ -352,20 +352,20 @@ uv_err_t uv_cpu_info(uv_cpu_info_t** cpu_infos, int* count) {
       cpu_info->cpu_times.irq = 0;
     } else {
       knp = (kstat_named_t *) kstat_data_lookup(ksp, (char *)"cpu_ticks_user");
-      assert(knp->data_type == KSTAT_DATA_INT32);
-      cpu_info->cpu_times.user = knp->value.i32;
+      assert(knp->data_type == KSTAT_DATA_UINT64);
+      cpu_info->cpu_times.user = knp->value.ui64;
 
       knp = (kstat_named_t *) kstat_data_lookup(ksp, (char *)"cpu_ticks_kernel");
-      assert(knp->data_type == KSTAT_DATA_INT32);
-      cpu_info->cpu_times.sys = knp->value.i32;
+      assert(knp->data_type == KSTAT_DATA_UINT64);
+      cpu_info->cpu_times.sys = knp->value.ui64;
 
       knp = (kstat_named_t *) kstat_data_lookup(ksp, (char *)"cpu_ticks_idle");
-      assert(knp->data_type == KSTAT_DATA_INT32);
-      cpu_info->cpu_times.idle = knp->value.i32;
+      assert(knp->data_type == KSTAT_DATA_UINT64);
+      cpu_info->cpu_times.idle = knp->value.ui64;
 
       knp = (kstat_named_t *) kstat_data_lookup(ksp, (char *)"intr");
-      assert(knp->data_type == KSTAT_DATA_INT32);
-      cpu_info->cpu_times.irq = knp->value.i32;
+      assert(knp->data_type == KSTAT_DATA_UINT64);
+      cpu_info->cpu_times.irq = knp->value.ui64;
       cpu_info->cpu_times.nice = 0;
     }
 

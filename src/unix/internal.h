@@ -93,8 +93,10 @@ enum {
   UV_WRITABLE      = 0x40,   /* The stream is writable */
   UV_TCP_NODELAY   = 0x080,  /* Disable Nagle. */
   UV_TCP_KEEPALIVE = 0x100,  /* Turn on keep-alive. */
-  UV_TIMER_ACTIVE  = 0x080,
-  UV_TIMER_REPEAT  = 0x100
+  UV_TIMER_REPEAT  = 0x100,
+  UV__PENDING      = 0x200,
+  UV__ACTIVE       = 0x400,
+  UV__REF          = 0x800
 };
 
 inline static void uv__req_init(uv_loop_t* loop,
@@ -102,9 +104,104 @@ inline static void uv__req_init(uv_loop_t* loop,
                                 uv_req_type type) {
   loop->counters.req_init++;
   req->type = type;
+#ifndef UV_LEAN_AND_MEAN
+  ngx_queue_insert_tail(&loop->active_reqs, &req->active_queue);
+#else
+  loop->active_reqs++;
+#endif
 }
 #define uv__req_init(loop, req, type) \
   uv__req_init((loop), (uv_req_t*)(req), (type))
+
+#ifndef UV_LEAN_AND_MEAN
+inline static int uv__has_active_handles(const uv_loop_t* loop) {
+  return !ngx_queue_empty(&loop->active_handles);
+}
+inline static int uv__has_active_reqs(const uv_loop_t* loop) {
+  return !ngx_queue_empty(&loop->active_reqs);
+}
+inline static void uv__active_handle_add(uv_handle_t* h) {
+  ngx_queue_insert_tail(&h->loop->active_handles, &h->active_queue);
+}
+inline static void uv__active_handle_rm(uv_handle_t* h) {
+  assert(uv__has_active_handles(h->loop));
+  ngx_queue_remove(&h->active_queue);
+}
+inline static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
+  assert(uv__has_active_reqs(loop));
+  ngx_queue_remove(&req->active_queue);
+}
+#else /* UV_LEAN_AND_MEAN */
+inline static int uv__has_active_handles(const uv_loop_t* loop) {
+  return loop->active_handles > 0;
+}
+inline static int uv__has_active_reqs(const uv_loop_t* loop) {
+  return loop->active_reqs > 0;
+}
+inline static void uv__active_handle_add(uv_handle_t* h) {
+  h->loop->active_handles++;
+}
+inline static void uv__active_handle_rm(uv_handle_t* h) {
+  assert(h->loop->active_handles > 0);
+  h->loop->active_handles--;
+}
+inline static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
+  assert(loop->active_reqs > 0);
+  loop->active_reqs--;
+  (void) req;
+}
+#endif /* UV_LEAN_AND_MEAN */
+
+#define uv__active_handle_add(h) uv__active_handle_add((uv_handle_t*)(h))
+#define uv__active_handle_rm(h) uv__active_handle_rm((uv_handle_t*)(h))
+#define uv__req_unref(loop, req) uv__req_unref((loop), (uv_req_t*)(req))
+
+inline static int uv__has_pending_handles(const uv_loop_t* loop) {
+  return loop->pending_handles != NULL;
+}
+
+inline static int uv__is_active(const uv_handle_t* h) {
+  return !!(h->flags & UV__ACTIVE);
+}
+#define uv__is_active(h) uv__is_active((const uv_handle_t*)(h))
+
+inline static void uv__handle_start(uv_handle_t* h) {
+  if (h->flags & UV__ACTIVE) return;
+  if (!(h->flags & UV__REF)) return;
+  h->flags |= UV__ACTIVE;
+  uv__active_handle_add(h);
+}
+#define uv__handle_start(h) uv__handle_start((uv_handle_t*)(h))
+
+inline static void uv__handle_stop(uv_handle_t* h) {
+  if (!(h->flags & UV__ACTIVE)) return;
+  if (!(h->flags & UV__REF)) return;
+  uv__active_handle_rm(h);
+  h->flags &= ~UV__ACTIVE;
+}
+#define uv__handle_stop(h) uv__handle_stop((uv_handle_t*)(h))
+
+inline static void uv__handle_ref(uv_handle_t* h) {
+  if (h->flags & UV__REF) return;
+  if (h->flags & UV__ACTIVE) uv__active_handle_add(h);
+  h->flags |= UV__REF;
+}
+#define uv__handle_ref(h) uv__handle_ref((uv_handle_t*)(h))
+
+inline static void uv__handle_unref(uv_handle_t* h) {
+  if (!(h->flags & UV__REF)) return;
+  if (h->flags & UV__ACTIVE) uv__active_handle_rm(h);
+  h->flags &= ~UV__REF;
+}
+#define uv__handle_unref(h) uv__handle_unref((uv_handle_t*)(h))
+
+inline static void uv__make_pending(uv_handle_t* h) {
+  if (h->flags & UV__PENDING) return;
+  h->next_pending = h->loop->pending_handles;
+  h->loop->pending_handles = h;
+  h->flags |= UV__PENDING;
+}
+#define uv__make_pending(h) uv__make_pending((uv_handle_t*)(h))
 
 /* core */
 void uv__handle_init(uv_loop_t* loop, uv_handle_t* handle, uv_handle_type type);
@@ -112,10 +209,14 @@ int uv__nonblock(int fd, int set) __attribute__((unused));
 int uv__cloexec(int fd, int set) __attribute__((unused));
 int uv__socket(int domain, int type, int protocol);
 int uv__dup(int fd);
+int uv_async_stop(uv_async_t* handle);
 
 /* loop */
 int uv__loop_init(uv_loop_t* loop, int default_loop);
 void uv__loop_delete(uv_loop_t* loop);
+void uv__run_idle(uv_loop_t* loop);
+void uv__run_check(uv_loop_t* loop);
+void uv__run_prepare(uv_loop_t* loop);
 
 /* error */
 uv_err_code uv_translate_sys_error(int sys_errno);
@@ -142,11 +243,6 @@ int uv_pipe_listen(uv_pipe_t* handle, int backlog, uv_connection_cb cb);
 void uv__pipe_accept(EV_P_ ev_io* watcher, int revents);
 
 /* various */
-int uv__check_active(const uv_check_t* handle);
-int uv__idle_active(const uv_idle_t* handle);
-int uv__prepare_active(const uv_prepare_t* handle);
-int uv__timer_active(const uv_timer_t* handle);
-
 void uv__async_close(uv_async_t* handle);
 void uv__check_close(uv_check_t* handle);
 void uv__fs_event_close(uv_fs_event_t* handle);
@@ -158,6 +254,8 @@ void uv__stream_close(uv_stream_t* handle);
 void uv__timer_close(uv_timer_t* handle);
 void uv__udp_close(uv_udp_t* handle);
 void uv__udp_finish_close(uv_udp_t* handle);
+
+void uv__stream_pending(uv_stream_t* handle);
 
 #define UV__F_IPC        (1 << 0)
 #define UV__F_NONBLOCK   (1 << 1)

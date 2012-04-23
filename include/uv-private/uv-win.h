@@ -32,6 +32,7 @@
 #include <sys/stat.h>
 
 #include "tree.h"
+#include "ngx-queue.h"
 
 #define MAX_PIPENAME_LEN 256
 

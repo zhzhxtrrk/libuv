@@ -285,16 +285,6 @@ void uv__finish_close(uv_handle_t* handle) {
 }
 
 
-void uv_ref(uv_handle_t* handle) {
-  uv__handle_ref(handle);
-}
-
-
-void uv_unref(uv_handle_t* handle) {
-  uv__handle_unref(handle);
-}
-
-
 void uv_update_time(uv_loop_t* loop) {
   ev_now_update(loop->ev);
 }

@@ -94,10 +94,20 @@ enum {
   UV_TCP_NODELAY   = 0x080,  /* Disable Nagle. */
   UV_TCP_KEEPALIVE = 0x100,  /* Turn on keep-alive. */
   UV_TIMER_REPEAT  = 0x100,
-  UV__PENDING      = 0x200,
-  UV__ACTIVE       = 0x400,
-  UV__REF          = 0x800
+  UV__PENDING      = 0x800
 };
+
+inline static int uv__has_pending_handles(const uv_loop_t* loop) {
+  return loop->pending_handles != NULL;
+}
+
+inline static void uv__make_pending(uv_handle_t* h) {
+  if (h->flags & UV__PENDING) return;
+  h->next_pending = h->loop->pending_handles;
+  h->loop->pending_handles = h;
+  h->flags |= UV__PENDING;
+}
+#define uv__make_pending(h) uv__make_pending((uv_handle_t*)(h))
 
 inline static void uv__req_init(uv_loop_t* loop,
                                 uv_req_t* req,
@@ -112,96 +122,6 @@ inline static void uv__req_init(uv_loop_t* loop,
 }
 #define uv__req_init(loop, req, type) \
   uv__req_init((loop), (uv_req_t*)(req), (type))
-
-#ifndef UV_LEAN_AND_MEAN
-inline static int uv__has_active_handles(const uv_loop_t* loop) {
-  return !ngx_queue_empty(&loop->active_handles);
-}
-inline static int uv__has_active_reqs(const uv_loop_t* loop) {
-  return !ngx_queue_empty(&loop->active_reqs);
-}
-inline static void uv__active_handle_add(uv_handle_t* h) {
-  ngx_queue_insert_tail(&h->loop->active_handles, &h->active_queue);
-}
-inline static void uv__active_handle_rm(uv_handle_t* h) {
-  assert(uv__has_active_handles(h->loop));
-  ngx_queue_remove(&h->active_queue);
-}
-inline static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
-  assert(uv__has_active_reqs(loop));
-  ngx_queue_remove(&req->active_queue);
-}
-#else /* UV_LEAN_AND_MEAN */
-inline static int uv__has_active_handles(const uv_loop_t* loop) {
-  return loop->active_handles > 0;
-}
-inline static int uv__has_active_reqs(const uv_loop_t* loop) {
-  return loop->active_reqs > 0;
-}
-inline static void uv__active_handle_add(uv_handle_t* h) {
-  h->loop->active_handles++;
-}
-inline static void uv__active_handle_rm(uv_handle_t* h) {
-  assert(h->loop->active_handles > 0);
-  h->loop->active_handles--;
-}
-inline static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
-  assert(loop->active_reqs > 0);
-  loop->active_reqs--;
-  (void) req;
-}
-#endif /* UV_LEAN_AND_MEAN */
-
-#define uv__active_handle_add(h) uv__active_handle_add((uv_handle_t*)(h))
-#define uv__active_handle_rm(h) uv__active_handle_rm((uv_handle_t*)(h))
-#define uv__req_unref(loop, req) uv__req_unref((loop), (uv_req_t*)(req))
-
-inline static int uv__has_pending_handles(const uv_loop_t* loop) {
-  return loop->pending_handles != NULL;
-}
-
-inline static int uv__is_active(const uv_handle_t* h) {
-  return !!(h->flags & UV__ACTIVE);
-}
-#define uv__is_active(h) uv__is_active((const uv_handle_t*)(h))
-
-inline static void uv__handle_start(uv_handle_t* h) {
-  if (h->flags & UV__ACTIVE) return;
-  if (!(h->flags & UV__REF)) return;
-  h->flags |= UV__ACTIVE;
-  uv__active_handle_add(h);
-}
-#define uv__handle_start(h) uv__handle_start((uv_handle_t*)(h))
-
-inline static void uv__handle_stop(uv_handle_t* h) {
-  if (!(h->flags & UV__ACTIVE)) return;
-  if (!(h->flags & UV__REF)) return;
-  uv__active_handle_rm(h);
-  h->flags &= ~UV__ACTIVE;
-}
-#define uv__handle_stop(h) uv__handle_stop((uv_handle_t*)(h))
-
-inline static void uv__handle_ref(uv_handle_t* h) {
-  if (h->flags & UV__REF) return;
-  if (h->flags & UV__ACTIVE) uv__active_handle_add(h);
-  h->flags |= UV__REF;
-}
-#define uv__handle_ref(h) uv__handle_ref((uv_handle_t*)(h))
-
-inline static void uv__handle_unref(uv_handle_t* h) {
-  if (!(h->flags & UV__REF)) return;
-  if (h->flags & UV__ACTIVE) uv__active_handle_rm(h);
-  h->flags &= ~UV__REF;
-}
-#define uv__handle_unref(h) uv__handle_unref((uv_handle_t*)(h))
-
-inline static void uv__make_pending(uv_handle_t* h) {
-  if (h->flags & UV__PENDING) return;
-  h->next_pending = h->loop->pending_handles;
-  h->loop->pending_handles = h;
-  h->flags |= UV__PENDING;
-}
-#define uv__make_pending(h) uv__make_pending((uv_handle_t*)(h))
 
 /* core */
 void uv__handle_init(uv_loop_t* loop, uv_handle_t* handle, uv_handle_type type);

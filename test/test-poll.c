@@ -387,11 +387,19 @@ static void connection_poll_cb(uv_poll_t* handle, int status, int events) {
     /* Sent and received FIN. Close and destroy context. */
     close_socket(context->sock);
     destroy_connection_context(context);
+    context->events = 0;
 
   } else if (new_events != context->events) {
     /* Poll mask changed. Call uv_poll_start again. */
     context->events = new_events;
     uv_poll_start(handle, new_events, connection_poll_cb);
+  }
+
+  /* Assert that uv_is_active works correctly for poll handles. */
+  if (context->events != 0) {
+    ASSERT(uv_is_active((uv_handle_t*) handle));
+  } else {
+    ASSERT(!uv_is_active((uv_handle_t*) handle));
   }
 }
 

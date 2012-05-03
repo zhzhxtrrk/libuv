@@ -64,6 +64,9 @@ int uv_is_active(const uv_handle_t* handle) {
     case UV_CHECK:
       return (handle->flags & UV_HANDLE_ACTIVE) ? 1 : 0;
 
+    case UV_POLL:
+      return ((uv_poll_t*) handle)->events != 0;
+
     default:
       return 1;
   }

@@ -44,8 +44,10 @@ typedef enum {
 
 static test_mode_t test_mode = DUPLEX;
 
-
 static int closed_connections = 0;
+
+static int valid_writable_wakeups = 0;
+static int spurious_writable_wakeups = 0;
 
 
 typedef struct connection_context_s {
@@ -289,27 +291,47 @@ static void connection_poll_cb(uv_poll_t* handle, int status, int events) {
 
           int send_bytes = MIN(TRANSFER_BYTES - context->sent, sizeof buffer);
           ASSERT(send_bytes > 0);
+
           r = send(context->sock, buffer, send_bytes, 0);
+
+          if (r < 0) {
+            ASSERT(got_eagain());
+            spurious_writable_wakeups++;
+            break;
+          }
+
           ASSERT(r > 0);
           context->sent += r;
+          valid_writable_wakeups++;
           break;
         }
 
         case 2:
         case 3: {
+          /* Send until EAGAIN. */
           static char buffer[1234];
 
-          /* Send until EAGAIN. */
           int send_bytes = MIN(TRANSFER_BYTES - context->sent, sizeof buffer);
           ASSERT(send_bytes > 0);
+
           r = send(context->sock, buffer, send_bytes, 0);
+
+          if (r < 0) {
+            ASSERT(got_eagain());
+            spurious_writable_wakeups++;
+            break;
+          }
+
           ASSERT(r > 0);
+          valid_writable_wakeups++;
           context->sent += r;
 
           while (context->sent < TRANSFER_BYTES) {
             send_bytes = MIN(TRANSFER_BYTES - context->sent, sizeof buffer);
             ASSERT(send_bytes > 0);
+
             r = send(context->sock, buffer, send_bytes, 0);
+
             if (r <= 0) break;
             context->sent += r;
           }
@@ -510,6 +532,11 @@ static void start_poll_test() {
 
   r = uv_run(uv_default_loop());
   ASSERT(r == 0);
+
+  /* Assert that at most one percent of the writable wakeups was spurious. */
+  ASSERT(spurious_writable_wakeups == 0 ||
+         (valid_writable_wakeups + spurious_writable_wakeups) /
+         spurious_writable_wakeups > 100);
 
   ASSERT(closed_connections == NUM_CLIENTS * 2);
 }

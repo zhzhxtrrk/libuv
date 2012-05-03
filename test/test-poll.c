@@ -24,6 +24,7 @@
 #ifndef _WIN32
 # include <fcntl.h>
 # include <sys/socket.h>
+# include <unistd.h>
 #endif
 
 #include "uv.h"
@@ -42,14 +43,6 @@ typedef enum {
   DUPLEX
 } test_mode_t;
 
-static test_mode_t test_mode = DUPLEX;
-
-static int closed_connections = 0;
-
-static int valid_writable_wakeups = 0;
-static int spurious_writable_wakeups = 0;
-
-
 typedef struct connection_context_s {
   uv_poll_t poll_handle;
   uv_timer_t timer_handle;
@@ -66,6 +59,17 @@ typedef struct server_context_s {
   uv_platform_socket_t sock;
   int connections;
 } server_context_t;
+
+
+static void delay_timer_cb(uv_timer_t* timer, int status);
+
+
+static test_mode_t test_mode = DUPLEX;
+
+static int closed_connections = 0;
+
+static int valid_writable_wakeups = 0;
+static int spurious_writable_wakeups = 0;
 
 
 static int got_eagain() {
@@ -92,7 +96,7 @@ static void set_nonblocking(uv_platform_socket_t sock) {
   int flags = fcntl(sock, F_GETFL, 0);
   ASSERT(flags >= 0);
   r = fcntl(sock, F_SETFL, flags | O_NONBLOCK);
-  ASSERT(flags >= 0);
+  ASSERT(r >= 0);
 #endif
 }
 
@@ -174,10 +178,17 @@ static void connection_close_cb(uv_handle_t* handle) {
   connection_context_t* context = (connection_context_t*) handle->data;
 
   if (--context->open_handles == 0) {
-    ASSERT(context->sent == TRANSFER_BYTES ||
-           (test_mode == UNIDIRECTIONAL && !context->is_server_connection));
-    ASSERT(context->read == TRANSFER_BYTES ||
-           (test_mode == UNIDIRECTIONAL && context->is_server_connection));
+    if (test_mode == DUPLEX || context->is_server_connection) {
+      ASSERT(context->read == TRANSFER_BYTES);
+    } else {
+      ASSERT(context->read == 0);
+    }
+
+    if (test_mode == DUPLEX || !context->is_server_connection) {
+      ASSERT(context->sent == TRANSFER_BYTES);
+    } else {
+      ASSERT(context->sent == 0);
+    }
 
     closed_connections++;
 
@@ -192,8 +203,6 @@ static void destroy_connection_context(connection_context_t* context) {
 }
 
 
-static void delay_timer_cb(uv_timer_t* timer, int status);
-
 static void connection_poll_cb(uv_poll_t* handle, int status, int events) {
   connection_context_t* context = (connection_context_t*) handle->data;
   int new_events;
@@ -206,14 +215,14 @@ static void connection_poll_cb(uv_poll_t* handle, int status, int events) {
   new_events = context->events;
 
   if (events & UV_READABLE) {
-    int action = rand() % 6;
+    int action = rand() % 7;
 
     switch (action) {
       case 0:
       case 1: {
         /* Read a couple of bytes. */
         static char buffer[74];
-        r = recv(context->sock, buffer, 50, 0);
+        r = recv(context->sock, buffer, sizeof buffer, 0);
         ASSERT(r >= 0);
 
         if (r > 0) {
@@ -278,10 +287,10 @@ static void connection_poll_cb(uv_poll_t* handle, int status, int events) {
   }
 
   if (events & UV_WRITABLE) {
-    if (context->sent < TRANSFER_BYTES && (test_mode == DUPLEX ||
-        (test_mode == UNIDIRECTIONAL) == !!context->is_server_connection)) {
+    if (context->sent < TRANSFER_BYTES &&
+        !(test_mode == UNIDIRECTIONAL && context->is_server_connection)) {
       /* We have to send more bytes. */
-      int action = rand() % 6;
+      int action = rand() % 7;
 
       switch (action) {
         case 0:

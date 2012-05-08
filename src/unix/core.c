@@ -107,6 +107,10 @@ void uv_close(uv_handle_t* handle, uv_close_cb close_cb) {
     uv__fs_event_close((uv_fs_event_t*)handle);
     break;
 
+  case UV_POLL:
+    uv__poll_close((uv_poll_t*)handle);
+    break;
+
   default:
     assert(0);
   }
@@ -269,6 +273,9 @@ void uv__finish_close(uv_handle_t* handle) {
       break;
 
     case UV_FS_EVENT:
+      break;
+
+    case UV_POLL:
       break;
 
     default:

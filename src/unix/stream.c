@@ -158,7 +158,7 @@ void uv__stream_destroy(uv_stream_t* stream) {
     }
   }
 
-  if (!(stream->flags & UV_SHUTTING))
+  if (!(stream->flags & UV_STREAM_SHUTTING))
     return;
 
   if (!stream->shutdown_req)
@@ -246,7 +246,7 @@ int uv_accept(uv_stream_t* server, uv_stream_t* client) {
   }
 
   if (uv__stream_open(streamClient, streamServer->accepted_fd,
-        UV_READABLE | UV_WRITABLE)) {
+        UV_STREAM_READABLE | UV_STREAM_WRITABLE)) {
     /* TODO handle error */
     close(streamServer->accepted_fd);
     streamServer->accepted_fd = -1;
@@ -316,9 +316,9 @@ static void uv__drain(uv_stream_t* stream) {
   ev_io_stop(stream->loop->ev, &stream->write_watcher);
 
   /* Shutdown? */
-  if ((stream->flags & UV_SHUTTING) &&
+  if ((stream->flags & UV_STREAM_SHUTTING) &&
       !(stream->flags & UV_CLOSING) &&
-      !(stream->flags & UV_SHUT)) {
+      !(stream->flags & UV_STREAM_SHUT)) {
     assert(stream->shutdown_req);
 
     req = stream->shutdown_req;
@@ -333,7 +333,7 @@ static void uv__drain(uv_stream_t* stream) {
       }
     } else {
       uv__set_sys_error(stream->loop, 0);
-      ((uv_handle_t*) stream)->flags |= UV_SHUT;
+      ((uv_handle_t*) stream)->flags |= UV_STREAM_SHUT;
       if (req->cb) {
         req->cb(req, 0);
       }
@@ -579,11 +579,11 @@ static void uv__read(uv_stream_t* stream) {
   char cmsg_space[64];
   struct ev_loop* ev = stream->loop->ev;
 
-  /* XXX: Maybe instead of having UV_READING we just test if
+  /* XXX: Maybe instead of having UV_STREAM_READING we just test if
    * tcp->read_cb is NULL or not?
    */
   while ((stream->read_cb || stream->read2_cb) &&
-         stream->flags & UV_READING) {
+         stream->flags & UV_STREAM_READING) {
     assert(stream->alloc_cb);
     buf = stream->alloc_cb((uv_handle_t*)stream, 64 * 1024);
 
@@ -619,7 +619,7 @@ static void uv__read(uv_stream_t* stream) {
       /* Error */
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         /* Wait for the next one. */
-        if (stream->flags & UV_READING) {
+        if (stream->flags & UV_STREAM_READING) {
           ev_io_start(ev, &stream->read_watcher);
         }
         uv__set_sys_error(stream->loop, EAGAIN);
@@ -714,8 +714,8 @@ int uv_shutdown(uv_shutdown_t* req, uv_stream_t* stream, uv_shutdown_cb cb) {
          "uv_shutdown (unix) only supports uv_handle_t right now");
   assert(stream->fd >= 0);
 
-  if (!(stream->flags & UV_WRITABLE) ||
-      stream->flags & UV_SHUT ||
+  if (!(stream->flags & UV_STREAM_WRITABLE) ||
+      stream->flags & UV_STREAM_SHUT ||
       stream->flags & UV_CLOSED ||
       stream->flags & UV_CLOSING) {
     uv__set_sys_error(stream->loop, EINVAL);
@@ -727,7 +727,7 @@ int uv_shutdown(uv_shutdown_t* req, uv_stream_t* stream, uv_shutdown_cb cb) {
   req->handle = stream;
   req->cb = cb;
   stream->shutdown_req = req;
-  stream->flags |= UV_SHUTTING;
+  stream->flags |= UV_STREAM_SHUTTING;
 
   ev_io_start(stream->loop->ev, &stream->write_watcher);
 
@@ -820,7 +820,9 @@ int uv__connect(uv_connect_t* req, uv_stream_t* stream, struct sockaddr* addr,
       return -1;
     }
 
-    if (uv__stream_open(stream, sockfd, UV_READABLE | UV_WRITABLE)) {
+    if (uv__stream_open(stream,
+                        sockfd,
+                        UV_STREAM_READABLE | UV_STREAM_WRITABLE)) {
       close(sockfd);
       return -2;
     }
@@ -973,10 +975,10 @@ int uv__read_start_common(uv_stream_t* stream, uv_alloc_cb alloc_cb,
     return -1;
   }
 
-  /* The UV_READING flag is irrelevant of the state of the tcp - it just
+  /* The UV_STREAM_READING flag is irrelevant of the state of the tcp - it just
    * expresses the desired state of the user.
    */
-  stream->flags |= UV_READING;
+  stream->flags |= UV_STREAM_READING;
 
   /* TODO: try to do the read inline? */
   /* TODO: keep track of tcp state. If we've gotten a EOF then we should
@@ -1014,7 +1016,7 @@ int uv_read2_start(uv_stream_t* stream, uv_alloc_cb alloc_cb,
 int uv_read_stop(uv_stream_t* stream) {
   ev_io_stop(stream->loop->ev, &stream->read_watcher);
   uv__handle_stop(stream);
-  stream->flags &= ~UV_READING;
+  stream->flags &= ~UV_STREAM_READING;
   stream->read_cb = NULL;
   stream->read2_cb = NULL;
   stream->alloc_cb = NULL;
@@ -1023,12 +1025,12 @@ int uv_read_stop(uv_stream_t* stream) {
 
 
 int uv_is_readable(const uv_stream_t* stream) {
-  return stream->flags & UV_READABLE;
+  return stream->flags & UV_STREAM_READABLE;
 }
 
 
 int uv_is_writable(const uv_stream_t* stream) {
-  return stream->flags & UV_WRITABLE;
+  return stream->flags & UV_STREAM_WRITABLE;
 }
 
 

@@ -34,12 +34,11 @@ int uv__loop_init(uv_loop_t* loop, int default_loop) {
   int flags = EVFLAG_AUTO;
 #endif
 
+  memset(loop, 0, sizeof(*loop));
+
 #ifndef UV_LEAN_AND_MEAN
   ngx_queue_init(&loop->active_handles);
   ngx_queue_init(&loop->active_reqs);
-#else
-  loop->active_handles = 0;
-  loop->active_reqs = 0;
 #endif
 
   RB_INIT(&loop->uv_ares_handles_);
@@ -47,6 +46,7 @@ int uv__loop_init(uv_loop_t* loop, int default_loop) {
   ngx_queue_init(&loop->check_handles);
   ngx_queue_init(&loop->prepare_handles);
   loop->pending_handles = NULL;
+  loop->channel = NULL;
   loop->ev = (default_loop ? ev_default_loop : ev_loop_new)(flags);
   ev_set_userdata(loop->ev, loop);
   eio_channel_init(&loop->uv_eio_channel, loop);
@@ -55,7 +55,9 @@ int uv__loop_init(uv_loop_t* loop, int default_loop) {
   RB_INIT(&loop->inotify_watchers);
   loop->inotify_fd = -1;
 #endif
-
+#if HAVE_PORTS_FS
+  loop->fs_fd = -1;
+#endif
   return 0;
 }
 
@@ -68,6 +70,10 @@ void uv__loop_delete(uv_loop_t* loop) {
   ev_io_stop(loop->ev, &loop->inotify_read_watcher);
   close(loop->inotify_fd);
   loop->inotify_fd = -1;
+#endif
+#if HAVE_PORTS_FS
+  if (loop->fs_fd != -1)
+    close(loop->fs_fd);
 #endif
 }
 

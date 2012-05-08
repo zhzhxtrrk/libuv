@@ -37,6 +37,7 @@ OBJS += src/unix/fs.o
 OBJS += src/unix/idle.o
 OBJS += src/unix/loop.o
 OBJS += src/unix/pipe.o
+OBJS += src/unix/poll.o
 OBJS += src/unix/prepare.o
 OBJS += src/unix/process.o
 OBJS += src/unix/stream.o
@@ -103,7 +104,7 @@ ifeq (OpenBSD,$(uname_S))
 EV_CONFIG=config_openbsd.h
 EIO_CONFIG=config_openbsd.h
 CPPFLAGS += -Isrc/ares/config_openbsd
-LINKFLAGS+=
+LINKFLAGS+=-lkvm
 OBJS += src/unix/openbsd.o
 OBJS += src/unix/kqueue.o
 endif

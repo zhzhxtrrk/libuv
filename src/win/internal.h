@@ -47,7 +47,6 @@ void uv_process_timers(uv_loop_t* loop);
 #define UV_HANDLE_CLOSING                       0x00000001
 #define UV_HANDLE_CLOSED                        0x00000002
 #define UV_HANDLE_ENDGAME_QUEUED                0x00000004
-#define UV_HANDLE_UV_ALLOCED                    0x00000008
 #define UV_HANDLE_ACTIVE                        0x00000010
 
 /* Used by streams. */

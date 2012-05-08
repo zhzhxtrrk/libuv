@@ -280,7 +280,6 @@ static DWORD WINAPI pipe_shutdown_thread_proc(void* parameter) {
 
 
 void uv_pipe_endgame(uv_loop_t* loop, uv_pipe_t* handle) {
-  unsigned int uv_alloced;
   DWORD result;
   uv_shutdown_t* req;
   NTSTATUS nt_status;
@@ -380,16 +379,8 @@ void uv_pipe_endgame(uv_loop_t* loop, uv_pipe_t* handle) {
       handle->accept_reqs = NULL;
     }
 
-    /* Remember the state of this flag because the close callback is */
-    /* allowed to clobber or free the handle's memory */
-    uv_alloced = handle->flags & UV_HANDLE_UV_ALLOCED;
-
     if (handle->close_cb) {
       handle->close_cb((uv_handle_t*)handle);
-    }
-
-    if (uv_alloced) {
-      free(handle);
     }
 
     uv_unref(loop);

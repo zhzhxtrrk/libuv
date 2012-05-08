@@ -33,6 +33,13 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
+#ifdef _MSC_VER
+# define INLINE __declspec(inline)
+#else
+# define INLINE inline
+#endif
+
+
 enum {
   UV__ACTIVE       = 0x4000,
   UV__REF          = 0x8000
@@ -90,48 +97,48 @@ int uv__tcp_connect6(uv_connect_t* req,
 
 #ifndef UV_LEAN_AND_MEAN
 
-inline static int uv__has_active_handles(const uv_loop_t* loop) {
+INLINE static int uv__has_active_handles(const uv_loop_t* loop) {
   return !ngx_queue_empty(&loop->active_handles);
 }
 
-inline static int uv__has_active_reqs(const uv_loop_t* loop) {
+INLINE static int uv__has_active_reqs(const uv_loop_t* loop) {
   return !ngx_queue_empty(&loop->active_reqs);
 }
 
-inline static void uv__active_handle_add(uv_handle_t* h) {
+INLINE static void uv__active_handle_add(uv_handle_t* h) {
   ngx_queue_insert_tail(&h->loop->active_handles, &h->active_queue);
 }
 
-inline static void uv__active_handle_rm(uv_handle_t* h) {
+INLINE static void uv__active_handle_rm(uv_handle_t* h) {
   assert(uv__has_active_handles(h->loop));
   ngx_queue_remove(&h->active_queue);
 }
 
-inline static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
+INLINE static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
   assert(uv__has_active_reqs(loop));
   ngx_queue_remove(&req->active_queue);
 }
 
 #else /* UV_LEAN_AND_MEAN */
 
-inline static int uv__has_active_handles(const uv_loop_t* loop) {
+INLINE static int uv__has_active_handles(const uv_loop_t* loop) {
   return loop->active_handles > 0;
 }
 
-inline static int uv__has_active_reqs(const uv_loop_t* loop) {
+INLINE static int uv__has_active_reqs(const uv_loop_t* loop) {
   return loop->active_reqs > 0;
 }
 
-inline static void uv__active_handle_add(uv_handle_t* h) {
+INLINE static void uv__active_handle_add(uv_handle_t* h) {
   h->loop->active_handles++;
 }
 
-inline static void uv__active_handle_rm(uv_handle_t* h) {
+INLINE static void uv__active_handle_rm(uv_handle_t* h) {
   assert(h->loop->active_handles > 0);
   h->loop->active_handles--;
 }
 
-inline static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
+INLINE static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
   assert(loop->active_reqs > 0);
   loop->active_reqs--;
   (void) req;
@@ -143,12 +150,12 @@ inline static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
 #define uv__active_handle_rm(h) uv__active_handle_rm((uv_handle_t*)(h))
 #define uv__req_unref(loop, req) uv__req_unref((loop), (uv_req_t*)(req))
 
-inline static int uv__is_active(const uv_handle_t* h) {
+INLINE static int uv__is_active(const uv_handle_t* h) {
   return !!(h->flags & UV__ACTIVE);
 }
 #define uv__is_active(h) uv__is_active((const uv_handle_t*)(h))
 
-inline static void uv__handle_start(uv_handle_t* h) {
+INLINE static void uv__handle_start(uv_handle_t* h) {
   if (h->flags & UV__ACTIVE) return;
   if (!(h->flags & UV__REF)) return;
   h->flags |= UV__ACTIVE;
@@ -156,7 +163,7 @@ inline static void uv__handle_start(uv_handle_t* h) {
 }
 #define uv__handle_start(h) uv__handle_start((uv_handle_t*)(h))
 
-inline static void uv__handle_stop(uv_handle_t* h) {
+INLINE static void uv__handle_stop(uv_handle_t* h) {
   if (!(h->flags & UV__ACTIVE)) return;
   if (!(h->flags & UV__REF)) return;
   uv__active_handle_rm(h);
@@ -164,14 +171,14 @@ inline static void uv__handle_stop(uv_handle_t* h) {
 }
 #define uv__handle_stop(h) uv__handle_stop((uv_handle_t*)(h))
 
-inline static void uv__handle_ref(uv_handle_t* h) {
+INLINE static void uv__handle_ref(uv_handle_t* h) {
   if (h->flags & UV__REF) return;
   if (h->flags & UV__ACTIVE) uv__active_handle_add(h);
   h->flags |= UV__REF;
 }
 #define uv__handle_ref(h) uv__handle_ref((uv_handle_t*)(h))
 
-inline static void uv__handle_unref(uv_handle_t* h) {
+INLINE static void uv__handle_unref(uv_handle_t* h) {
   if (!(h->flags & UV__REF)) return;
   if (h->flags & UV__ACTIVE) uv__active_handle_rm(h);
   h->flags &= ~UV__REF;

@@ -1276,7 +1276,7 @@ void uv_tcp_close(uv_tcp_t* tcp) {
         uv_tcp_non_ifs_lsp_ipv4;
 
       if (!non_ifs_lsp) {
-        /* 
+        /*
          * Shared socket with no non-IFS LSPs, request to cancel pending I/O.
          * The socket will be closed inside endgame.
          */
@@ -1286,7 +1286,13 @@ void uv_tcp_close(uv_tcp_t* tcp) {
     }
   }
 
-  tcp->flags &= ~(UV_HANDLE_READING | UV_HANDLE_LISTENING);
+  if (tcp->flags & UV_HANDLE_READING) {
+    tcp->flags &= ~UV_HANDLE_READING;
+  }
+
+  if (tcp->flags & UV_HANDLE_LISTENING) {
+    tcp->flags &= ~UV_HANDLE_LISTENING;
+  }
 
   if (close_socket) {
     closesocket(tcp->socket);

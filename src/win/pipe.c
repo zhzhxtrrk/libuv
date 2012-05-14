@@ -611,7 +611,7 @@ error:
 
 /* Cleans up uv_pipe_t (server or connection) and all resources associated */
 /* with it. */
-void close_pipe(uv_pipe_t* handle, int* status, uv_err_t* err) {
+void uv_pipe_cleanup(uv_loop_t* loop, uv_pipe_t* handle) {
   int i;
   HANDLE pipeHandle;
 
@@ -639,6 +639,23 @@ void close_pipe(uv_pipe_t* handle, int* status, uv_err_t* err) {
       && handle->handle != INVALID_HANDLE_VALUE) {
     CloseHandle(handle->handle);
     handle->handle = INVALID_HANDLE_VALUE;
+  }
+}
+
+
+void uv_pipe_close(uv_loop_t* loop, uv_pipe_t* handle) {
+  if (handle->flags & UV_HANDLE_READING) {
+    handle->flags &= ~UV_HANDLE_READING;
+  }
+
+  if (handle->flags & UV_HANDLE_LISTENING) {
+    handle->flags &= ~UV_HANDLE_LISTENING;
+  }
+
+  uv_pipe_cleanup(loop, handle);
+
+  if (handle->reqs_pending == 0) {
+    uv_want_endgame(loop, (uv_handle_t*) handle);
   }
 }
 

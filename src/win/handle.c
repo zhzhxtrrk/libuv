@@ -74,9 +74,6 @@ int uv_is_active(const uv_handle_t* handle) {
 
 
 void uv_close(uv_handle_t* handle, uv_close_cb cb) {
-  uv_pipe_t* pipe;
-  uv_udp_t* udp;
-  uv_process_t* process;
 
   uv_loop_t* loop = handle->loop;
 
@@ -90,16 +87,11 @@ void uv_close(uv_handle_t* handle, uv_close_cb cb) {
   /* Handle-specific close actions */
   switch (handle->type) {
     case UV_TCP:
-      uv_tcp_close((uv_tcp_t*)handle);
+      uv_tcp_close(loop, (uv_tcp_t*)handle);
       return;
 
     case UV_NAMED_PIPE:
-      pipe = (uv_pipe_t*)handle;
-      pipe->flags &= ~(UV_HANDLE_READING | UV_HANDLE_LISTENING);
-      close_pipe(pipe, NULL, NULL);
-      if (pipe->reqs_pending == 0) {
-        uv_want_endgame(loop, handle);
-      }
+      uv_pipe_close(loop, (uv_pipe_t*) handle);
       return;
 
     case UV_TTY:
@@ -107,16 +99,11 @@ void uv_close(uv_handle_t* handle, uv_close_cb cb) {
       return;
 
     case UV_UDP:
-      udp = (uv_udp_t*) handle;
-      uv_udp_recv_stop(udp);
-      closesocket(udp->socket);
-      if (udp->reqs_pending == 0) {
-        uv_want_endgame(loop, handle);
-      }
+      uv_udp_close(loop, (uv_udp_t*) handle);
       return;
 
     case UV_POLL:
-      uv_poll_close(handle->loop, (uv_poll_t*) handle);
+      uv_poll_close(loop, (uv_poll_t*) handle);
       return;
 
     case UV_TIMER:
@@ -146,12 +133,11 @@ void uv_close(uv_handle_t* handle, uv_close_cb cb) {
       return;
 
     case UV_PROCESS:
-      process = (uv_process_t*)handle;
-      uv_process_close(loop, process);
+      uv_process_close(loop, (uv_process_t*) handle);
       return;
 
     case UV_FS_EVENT:
-      uv_fs_event_close(loop, (uv_fs_event_t*)handle);
+      uv_fs_event_close(loop, (uv_fs_event_t*) handle);
       return;
 
     default:

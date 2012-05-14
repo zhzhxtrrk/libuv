@@ -816,7 +816,7 @@ static int uv_create_stdio_pipe_pair(uv_loop_t* loop, uv_pipe_t* server_pipe,
 done:
   if (err) {
     if (server_pipe->handle != INVALID_HANDLE_VALUE) {
-      close_pipe(server_pipe, NULL, NULL);
+      uv_pipe_cleanup(loop, server_pipe);
     }
 
     if (*child_pipe != INVALID_HANDLE_VALUE) {

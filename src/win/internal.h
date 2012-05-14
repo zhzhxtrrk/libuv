@@ -153,6 +153,7 @@ void uv_process_tcp_accept_req(uv_loop_t* loop, uv_tcp_t* handle,
 void uv_process_tcp_connect_req(uv_loop_t* loop, uv_tcp_t* handle,
     uv_connect_t* req);
 
+void uv_tcp_close(uv_loop_t* loop, uv_tcp_t* tcp);
 void uv_tcp_endgame(uv_loop_t* loop, uv_tcp_t* handle);
 
 int uv_tcp_import(uv_tcp_t* tcp, WSAPROTOCOL_INFOW* socket_protocol_info,
@@ -160,8 +161,6 @@ int uv_tcp_import(uv_tcp_t* tcp, WSAPROTOCOL_INFOW* socket_protocol_info,
 
 int uv_tcp_duplicate_socket(uv_tcp_t* handle, int pid,
     LPWSAPROTOCOL_INFOW protocol_info);
-
-void uv_tcp_close(uv_tcp_t* tcp);
 
 
 /*
@@ -171,6 +170,7 @@ void uv_process_udp_recv_req(uv_loop_t* loop, uv_udp_t* handle, uv_req_t* req);
 void uv_process_udp_send_req(uv_loop_t* loop, uv_udp_t* handle,
     uv_udp_send_t* req);
 
+void uv_udp_close(uv_loop_t* loop, uv_udp_t* handle);
 void uv_udp_endgame(uv_loop_t* loop, uv_udp_t* handle);
 
 
@@ -179,8 +179,6 @@ void uv_udp_endgame(uv_loop_t* loop, uv_udp_t* handle);
  */
 int uv_stdio_pipe_server(uv_loop_t* loop, uv_pipe_t* handle, DWORD access,
     char* name, size_t nameSize);
-void close_pipe(uv_pipe_t* handle, int* status, uv_err_t* err);
-void uv_pipe_endgame(uv_loop_t* loop, uv_pipe_t* handle);
 
 int uv_pipe_listen(uv_pipe_t* handle, int backlog, uv_connection_cb cb);
 int uv_pipe_accept(uv_pipe_t* server, uv_stream_t* client);
@@ -203,6 +201,10 @@ void uv_process_pipe_connect_req(uv_loop_t* loop, uv_pipe_t* handle,
     uv_connect_t* req);
 void uv_process_pipe_shutdown_req(uv_loop_t* loop, uv_pipe_t* handle,
     uv_shutdown_t* req);
+
+void uv_pipe_close(uv_loop_t* loop, uv_pipe_t* handle);
+void uv_pipe_cleanup(uv_loop_t* loop, uv_pipe_t* handle);
+void uv_pipe_endgame(uv_loop_t* loop, uv_pipe_t* handle);
 
 
 /*

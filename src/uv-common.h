@@ -35,12 +35,18 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
-#if !defined(NDEBUG)
-# define INLINE /* empty */
-#elif defined(_MSC_VER)
-# define INLINE __inline
+#ifdef DEBUG
+# ifdef _MSC_VER
+#   define INLINE /* empty */
+# else
+#   define INLINE __attribute__((unused))
+# endif
 #else
-# define INLINE inline
+# ifdef _MSC_VER
+#   define INLINE __inline
+# else
+#   define INLINE inline
+# endif
 #endif
 
 #ifndef _WIN32

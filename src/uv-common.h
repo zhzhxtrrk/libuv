@@ -47,6 +47,9 @@ enum {
   UV__ACTIVE       = 0x4000,
   UV__REF          = 0x8000
 };
+#else
+# define UV__REF     0x00000020
+# define UV__ACTIVE  0x00000040
 #endif
 
 struct uv_ares_task_s {

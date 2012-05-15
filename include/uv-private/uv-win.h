@@ -308,7 +308,7 @@ RB_HEAD(uv_timer_tree_s, uv_timer_s);
 
 #define UV_STREAM_PRIVATE_FIELDS          \
   unsigned int reqs_pending;              \
-  int activecnt;                 \
+  int activecnt;                          \
   uv_read_t read_req;                     \
   union {                                 \
     struct { uv_stream_connection_fields };  \
@@ -336,7 +336,7 @@ RB_HEAD(uv_timer_tree_s, uv_timer_s);
 #define UV_UDP_PRIVATE_FIELDS             \
   SOCKET socket;                          \
   unsigned int reqs_pending;              \
-  int activecnt;                 \
+  int activecnt;                          \
   uv_req_t recv_req;                      \
   uv_buf_t recv_buffer;                   \
   struct sockaddr_storage recv_from;      \

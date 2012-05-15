@@ -112,7 +112,7 @@ void uv__udp_finish_close(uv_udp_t* handle) {
     ngx_queue_remove(q);
 
     req = ngx_queue_data(q, uv_udp_send_t, queue);
-    uv__req_unref(handle->loop, req);
+    uv__req_unregister(handle->loop, req);
 
     if (req->send_cb) {
       /* FIXME proper error code like UV_EABORTED */
@@ -194,7 +194,7 @@ static void uv__udp_run_completed(uv_udp_t* handle) {
     ngx_queue_remove(q);
 
     req = ngx_queue_data(q, uv_udp_send_t, queue);
-    uv__req_unref(handle->loop, req);
+    uv__req_unregister(handle->loop, req);
 
     if (req->bufs != req->bufsml)
       free(req->bufs);

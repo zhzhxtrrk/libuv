@@ -134,7 +134,7 @@ void uv__stream_destroy(uv_stream_t* stream) {
     ngx_queue_remove(q);
 
     req = ngx_queue_data(q, uv_write_t, queue);
-    uv__req_unref(stream->loop, req);
+    uv__req_unregister(stream->loop, req);
 
     if (req->bufs != req->bufsml)
       free(req->bufs);
@@ -150,7 +150,7 @@ void uv__stream_destroy(uv_stream_t* stream) {
     ngx_queue_remove(q);
 
     req = ngx_queue_data(q, uv_write_t, queue);
-    uv__req_unref(stream->loop, req);
+    uv__req_unregister(stream->loop, req);
 
     if (req->cb) {
       uv__set_sys_error(stream->loop, req->error);
@@ -166,7 +166,7 @@ void uv__stream_destroy(uv_stream_t* stream) {
 
   shutdown_req = stream->shutdown_req;
   stream->shutdown_req = NULL;
-  uv__req_unref(stream->loop, shutdown_req);
+  uv__req_unregister(stream->loop, shutdown_req);
 
   if (shutdown_req->cb) {
     uv__set_artificial_error(stream->loop, UV_EINTR);
@@ -323,7 +323,7 @@ static void uv__drain(uv_stream_t* stream) {
 
     req = stream->shutdown_req;
     stream->shutdown_req = NULL;
-    uv__req_unref(stream->loop, req);
+    uv__req_unregister(stream->loop, req);
 
     if (shutdown(stream->fd, SHUT_WR)) {
       /* Error. Report it. User should call uv_close(). */
@@ -531,7 +531,7 @@ static void uv__write_callbacks(uv_stream_t* stream) {
     q = ngx_queue_head(&stream->write_completed_queue);
     req = ngx_queue_data(q, uv_write_t, queue);
     ngx_queue_remove(q);
-    uv__req_unref(stream->loop, req);
+    uv__req_unregister(stream->loop, req);
 
     /* NOTE: call callback AFTER freeing the request data. */
     if (req->cb) {
@@ -800,7 +800,7 @@ static void uv__stream_connect(uv_stream_t* stream) {
     ev_io_start(stream->loop->ev, &stream->read_watcher);
 
   stream->connect_req = NULL;
-  uv__req_unref(stream->loop, req);
+  uv__req_unregister(stream->loop, req);
 
   if (req->cb) {
     uv__set_sys_error(stream->loop, error);

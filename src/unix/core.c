@@ -316,7 +316,7 @@ static int uv_getaddrinfo_done(eio_req* req_) {
 
   req->res = NULL;
 
-  uv__req_unref(req->loop, req);
+  uv__req_unregister(req->loop, req);
 
   free(req->hints);
   free(req->service);

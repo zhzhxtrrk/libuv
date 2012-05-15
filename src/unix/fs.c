@@ -77,13 +77,13 @@ static void uv_fs_req_init(uv_loop_t* loop, uv_fs_t* req, uv_fs_type fs_type,
 
   /* synchronous requests don't increase the reference count */
   if (!req->cb)
-    uv__req_unref(req->loop, req);
+    uv__req_unregister(req->loop, req);
 }
 
 
 void uv_fs_req_cleanup(uv_fs_t* req) {
   if (req->cb)
-    uv__req_unref(req->loop, req);
+    uv__req_unregister(req->loop, req);
 
   free(req->path);
   req->path = NULL;
@@ -664,7 +664,7 @@ static void uv__work(eio_req* eio) {
 
 static int uv__after_work(eio_req *eio) {
   uv_work_t* req = eio->data;
-  uv__req_unref(req->loop, req);
+  uv__req_unregister(req->loop, req);
   if (req->after_work_cb) {
     req->after_work_cb(req);
   }

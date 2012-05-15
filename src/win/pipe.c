@@ -1529,7 +1529,7 @@ void uv_process_pipe_connect_req(uv_loop_t* loop, uv_pipe_t* handle,
     uv_connect_t* req) {
   assert(handle->type == UV_NAMED_PIPE);
 
-  UNREGISTER_HANDLE_REQ(loop, handle, req)
+  UNREGISTER_HANDLE_REQ(loop, handle, req);
 
   if (req->cb) {
     if (REQ_SUCCESS(req)) {

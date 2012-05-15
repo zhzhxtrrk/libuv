@@ -123,13 +123,13 @@ void uv_process_endgames(uv_loop_t* loop);
   do {                                                                  \
     INCREASE_ACTIVE_COUNT((loop), (handle));                            \
     uv__req_register((loop), (req));                                    \
-  } while (0);
+  } while (0)
 
 #define UNREGISTER_HANDLE_REQ(loop, handle, req)                        \
   do {                                                                  \
     DECREASE_ACTIVE_COUNT((loop), (handle));                            \
     uv__req_unregister((loop), (req));                                  \
-  } while (0);
+  } while (0)
 
 
 /*

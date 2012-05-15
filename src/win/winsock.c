@@ -22,8 +22,8 @@
 #include <assert.h>
 
 #include "uv.h"
-#include "../uv-common.h"
 #include "internal.h"
+#include "../uv-common.h"
 
 /* Whether ipv6 is supported */
 int uv_allow_ipv6;

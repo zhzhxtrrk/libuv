@@ -27,23 +27,28 @@
 #ifndef UV_COMMON_H_
 #define UV_COMMON_H_
 
+#include <assert.h>
+
 #include "uv.h"
 #include "tree.h"
-#include <assert.h>
+
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
-#ifdef _MSC_VER
-# define INLINE __declspec(inline)
+#if !defined(NDEBUG)
+# define INLINE /* empty */
+#elif defined(_MSC_VER)
+# define INLINE __inline
 #else
 # define INLINE inline
 #endif
 
-
+#ifndef _WIN32
 enum {
   UV__ACTIVE       = 0x4000,
   UV__REF          = 0x8000
 };
+#endif
 
 struct uv_ares_task_s {
   UV_HANDLE_FIELDS
@@ -114,7 +119,11 @@ INLINE static void uv__active_handle_rm(uv_handle_t* h) {
   ngx_queue_remove(&h->active_queue);
 }
 
-INLINE static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
+INLINE static void uv__req_register(uv_loop_t* loop, uv_req_t* req) {
+  ngx_queue_insert_tail(&loop->active_reqs, &req->active_queue);
+}
+
+INLINE static void uv__req_unregister(uv_loop_t* loop, uv_req_t* req) {
   assert(uv__has_active_reqs(loop));
   ngx_queue_remove(&req->active_queue);
 }
@@ -138,7 +147,12 @@ INLINE static void uv__active_handle_rm(uv_handle_t* h) {
   h->loop->active_handles--;
 }
 
-INLINE static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
+INLINE static void uv__req_register(uv_loop_t* loop, uv_req_t* req) {
+  loop->active_reqs++;
+  (void) req;
+}
+
+INLINE static void uv__req_unregister(uv_loop_t* loop, uv_req_t* req) {
   assert(loop->active_reqs > 0);
   loop->active_reqs--;
   (void) req;
@@ -148,7 +162,9 @@ INLINE static void uv__req_unref(uv_loop_t* loop, uv_req_t* req) {
 
 #define uv__active_handle_add(h) uv__active_handle_add((uv_handle_t*)(h))
 #define uv__active_handle_rm(h) uv__active_handle_rm((uv_handle_t*)(h))
-#define uv__req_unref(loop, req) uv__req_unref((loop), (uv_req_t*)(req))
+
+#define uv__req_register(loop, req) uv__req_register((loop), (uv_req_t*)(req))
+#define uv__req_unregister(loop, req) uv__req_unregister((loop), (uv_req_t*)(req))
 
 INLINE static int uv__is_active(const uv_handle_t* h) {
   return !!(h->flags & UV__ACTIVE);

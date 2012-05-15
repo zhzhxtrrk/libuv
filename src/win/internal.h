@@ -23,7 +23,6 @@
 #define UV_WIN_INTERNAL_H_
 
 #include "uv.h"
-#include "../uv-common.h"
 
 #include "tree.h"
 #include "winapi.h"
@@ -40,7 +39,11 @@
 #define UV_HANDLE_ENDGAME_QUEUED                0x00000004
 #define UV_HANDLE_ACTIVE                        0x00000010
 
-/* Used by streams. */
+#define UV__REF                                 0x00000020
+#define UV__ACTIVE                              0x00000040
+/* reserved: #define UV_HANDLE_INTERNAL         0x00000080 */
+
+/* Used by streams and UDP handles. */
 #define UV_HANDLE_READING                       0x00000100
 #define UV_HANDLE_BOUND                         0x00000200
 #define UV_HANDLE_BIND_ERROR                    0x00000400
@@ -96,6 +99,41 @@ void uv_process_endgames(uv_loop_t* loop);
 
 #define UV_SUCCEEDED_WITH_IOCP(result)                        \
   ((result) || (GetLastError() == ERROR_IO_PENDING))
+
+#define DECREASE_ACTIVE_COUNT(loop, handle)                             \
+  do {                                                                  \
+    if (--(handle)->activecnt == 0 &&                                   \
+        !((handle)->flags & UV_HANDLE_CLOSING)) {                       \
+      uv__handle_stop((handle));                                        \
+    }                                                                   \
+    assert((handle)->activecnt >= 0);                                   \
+  } while (0)
+
+#define INCREASE_ACTIVE_COUNT(loop, handle)                             \
+  do {                                                                  \
+    if ((handle)->activecnt++ == 0) {                                   \
+      uv__handle_start((handle));                                       \
+    }                                                                   \
+    assert((handle)->activecnt > 0);                                    \
+  } while (0)
+
+#define REGISTER_HANDLE_REQ(loop, handle, req)                          \
+  do {                                                                  \
+    INCREASE_ACTIVE_COUNT((loop), (handle));                            \
+    uv__req_register((loop), (req));                                    \
+  } while (0);
+
+#define UNREGISTER_HANDLE_REQ(loop, handle, req)                        \
+  do {                                                                  \
+    DECREASE_ACTIVE_COUNT((loop), (handle));                            \
+    uv__req_unregister((loop), (req));                                  \
+  } while (0);
+
+
+/*
+ * Handles
+ */
+void uv_handle_init(uv_loop_t* loop, uv_handle_t* handle);
 
 
 /*

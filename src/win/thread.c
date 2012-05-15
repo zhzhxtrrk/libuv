@@ -19,10 +19,12 @@
  * IN THE SOFTWARE.
  */
 
-#include "uv.h"
-#include "../uv-common.h"
-#include "internal.h"
 #include <assert.h>
+
+#include "uv.h"
+#include "internal.h"
+#include "../uv-common.h"
+
 
 #define HAVE_SRWLOCK_API() (pTryAcquireSRWLockShared != NULL)
 

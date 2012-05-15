@@ -22,8 +22,8 @@
 #include <assert.h>
 
 #include "uv.h"
-#include "../uv-common.h"
 #include "internal.h"
+#include "../uv-common.h"
 
 
 void uv_req_init(uv_loop_t* loop, uv_req_t* req) {

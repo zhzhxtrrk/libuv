@@ -20,6 +20,12 @@
  */
 
 #include "uv.h"
+
+/* FIXME: This hack sucks. */
+#ifdef _WIN32
+# include "win/internal.h"
+#endif
+
 #include "uv-common.h"
 
 #include <assert.h>

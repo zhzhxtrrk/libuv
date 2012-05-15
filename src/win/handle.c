@@ -24,6 +24,7 @@
 
 #include "uv.h"
 #include "internal.h"
+#include "../uv-common.h"
 
 
 uv_handle_type uv_guess_handle(uv_file file) {
@@ -73,11 +74,19 @@ int uv_is_active(const uv_handle_t* handle) {
 }
 
 
-void uv_close(uv_handle_t* handle, uv_close_cb cb) {
+void uv_handle_init(uv_loop_t* loop, uv_handle_t* handle) {
+  handle->loop = loop;
+  handle->flags = UV__REF;
 
+  loop->counters.handle_init++;
+}
+
+
+void uv_close(uv_handle_t* handle, uv_close_cb cb) {
   uv_loop_t* loop = handle->loop;
 
   if (handle->flags & UV_HANDLE_CLOSING) {
+    assert(0);
     return;
   }
 
@@ -108,21 +117,25 @@ void uv_close(uv_handle_t* handle, uv_close_cb cb) {
 
     case UV_TIMER:
       uv_timer_stop((uv_timer_t*)handle);
+      uv__handle_start(handle);
       uv_want_endgame(loop, handle);
       return;
 
     case UV_PREPARE:
       uv_prepare_stop((uv_prepare_t*)handle);
+      uv__handle_start(handle);
       uv_want_endgame(loop, handle);
       return;
 
     case UV_CHECK:
       uv_check_stop((uv_check_t*)handle);
+      uv__handle_start(handle);
       uv_want_endgame(loop, handle);
       return;
 
     case UV_IDLE:
       uv_idle_stop((uv_idle_t*)handle);
+      uv__handle_start(handle);
       uv_want_endgame(loop, handle);
       return;
 
@@ -163,7 +176,7 @@ void uv_want_endgame(uv_loop_t* loop, uv_handle_t* handle) {
 void uv_process_endgames(uv_loop_t* loop) {
   uv_handle_t* handle;
 
-  while (loop->endgame_handles && loop->refs > 0) {
+  while (loop->endgame_handles) {
     handle = loop->endgame_handles;
     loop->endgame_handles = handle->endgame_next;
 

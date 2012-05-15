@@ -810,7 +810,7 @@ static void uv__stream_connect(uv_stream_t* stream) {
 
 
 int uv__connect(uv_connect_t* req, uv_stream_t* stream, struct sockaddr* addr,
-    socklen_t addrlen, uv_connect_cb cb) { 
+    socklen_t addrlen, uv_connect_cb cb) {
   int sockfd;
   int r;
 

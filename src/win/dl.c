@@ -21,6 +21,7 @@
 
 #include "uv.h"
 #include "internal.h"
+#include "../uv-common.h"
 
 static int uv__dlerror(uv_lib_t* lib, int errorno);
 

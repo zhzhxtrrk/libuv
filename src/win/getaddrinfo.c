@@ -24,6 +24,7 @@
 
 #include "uv.h"
 #include "internal.h"
+#include "../uv-common.h"
 
 
 /*
@@ -214,10 +215,10 @@ void uv_process_getaddrinfo_req(uv_loop_t* loop, uv_getaddrinfo_t* req) {
   }
 
 complete:
+  uv__req_unregister(loop, req);
+
   /* finally do callback with converted result */
   req->getaddrinfo_cb(req, status, (struct addrinfo*)alloc_ptr);
-
-  uv_unref(loop);
 }
 
 
@@ -352,7 +353,7 @@ int uv_getaddrinfo(uv_loop_t* loop,
     goto error;
   }
 
-  uv_ref(loop);
+  uv__req_register(loop, req);
 
   return 0;
 

@@ -47,6 +47,8 @@
         'include/ares.h',
         'include/ares_version.h',
         'include/uv.h',
+        'include/uv-private/ngx-queue.h',
+        'include/uv-private/tree.h',
         'src/uv-common.c',
         'src/uv-common.h',
         'src/ares/ares_cancel.c',
@@ -125,7 +127,6 @@
             '_GNU_SOURCE',
           ],
           'sources': [
-            'include/uv-private/tree.h',
             'include/uv-private/uv-win.h',
             'src/ares/config_win32/ares_config.h',
             'src/ares/windows_port.c',
@@ -179,7 +180,6 @@
           'sources': [
             'include/uv-private/eio.h',
             'include/uv-private/ev.h',
-            'include/uv-private/ngx-queue.h',
             'include/uv-private/uv-unix.h',
             'src/unix/async.c',
             'src/unix/cares.c',

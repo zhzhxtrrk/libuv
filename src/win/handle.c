@@ -127,9 +127,7 @@ void uv_close(uv_handle_t* handle, uv_close_cb cb) {
       return;
 
     case UV_ASYNC:
-      if (!((uv_async_t*)handle)->async_sent) {
-        uv_want_endgame(loop, handle);
-      }
+      uv_async_close(loop, (uv_async_t*) handle);
       return;
 
     case UV_PROCESS:

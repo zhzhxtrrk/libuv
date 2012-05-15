@@ -256,6 +256,7 @@ void uv_idle_invoke(uv_loop_t* loop);
 /*
  * Async watcher
  */
+void uv_async_close(uv_loop_t* loop, uv_async_t* handle);
 void uv_async_endgame(uv_loop_t* loop, uv_async_t* handle);
 
 void uv_process_async_wakeup_req(uv_loop_t* loop, uv_async_t* handle,

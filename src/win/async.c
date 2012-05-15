@@ -92,6 +92,13 @@ int uv_async_init(uv_loop_t* loop, uv_async_t* handle, uv_async_cb async_cb) {
 }
 
 
+void uv_async_close(uv_loop_t* loop, uv_async_t* handle) {
+  if (!((uv_async_t*)handle)->async_sent) {
+    uv_want_endgame(loop, (uv_handle_t*) handle);
+  }
+}
+
+
 int uv_async_send(uv_async_t* handle) {
   uv_loop_t* loop = handle->loop;
 

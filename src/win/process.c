@@ -689,27 +689,21 @@ static void close_child_stdio(uv_process_t* process) {
 void uv_process_proc_exit(uv_loop_t* loop, uv_process_t* handle) {
   DWORD exit_code;
 
+  /* FIXME: race condition. */
+  if (handle->flags & UV_HANDLE_CLOSING) {
+    return;
+  }
+
   /* Unregister from process notification. */
   if (handle->wait_handle != INVALID_HANDLE_VALUE) {
     UnregisterWait(handle->wait_handle);
     handle->wait_handle = INVALID_HANDLE_VALUE;
   }
 
-  if (handle->process_handle != INVALID_HANDLE_VALUE) {
-    /* Get the exit code. */
-    if (!GetExitCodeProcess(handle->process_handle, &exit_code)) {
-      exit_code = 127;
-    }
-
-    /* Clean-up the process handle. */
-    CloseHandle(handle->process_handle);
-    handle->process_handle = INVALID_HANDLE_VALUE;
-  } else {
-    /* We probably left the child stdio handles open to report the error */
-    /* asynchronously, so close them now. */
-    close_child_stdio(handle);
-
-    /* The process never even started in the first place. */
+  if (handle->process_handle == INVALID_HANDLE_VALUE ||
+      !GetExitCodeProcess(handle->process_handle, &exit_code)) {
+    /* The process never even started in the first place, or we were unable */
+    /* to obtain the exit code. */
     exit_code = 127;
   }
 
@@ -730,6 +724,12 @@ void uv_process_endgame(uv_loop_t* loop, uv_process_t* handle) {
   if (handle->flags & UV_HANDLE_CLOSING) {
     assert(!(handle->flags & UV_HANDLE_CLOSED));
     handle->flags |= UV_HANDLE_CLOSED;
+
+    /* Clean-up the process handle. */
+    CloseHandle(handle->process_handle);
+
+    /* Clean up the child stdio ends that may have been left open. */
+    close_child_stdio(handle);
 
     if (handle->close_cb) {
       handle->close_cb((uv_handle_t*)handle);

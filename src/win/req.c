@@ -147,8 +147,8 @@ void uv_process_reqs(uv_loop_t* loop) {
         uv_process_ares_cleanup_req(loop, (uv_ares_task_t*) req->data, req);
         break;
 
-      case UV_GETADDRINFO_REQ:
-        uv_process_getaddrinfo_req(loop, (uv_getaddrinfo_t*) req->data, req);
+      case UV_GETADDRINFO:
+        uv_process_getaddrinfo_req(loop, (uv_getaddrinfo_t*) req);
         break;
 
       case UV_PROCESS_EXIT:

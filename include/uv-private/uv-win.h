@@ -247,7 +247,6 @@ RB_HEAD(uv_timer_tree_s, uv_timer_s);
   UV_ARES_EVENT_REQ,                      \
   UV_ARES_CLEANUP_REQ,                    \
   UV_FS_EVENT_REQ,                        \
-  UV_GETADDRINFO_REQ,                     \
   UV_POLL_REQ,                            \
   UV_PROCESS_EXIT,                        \
   UV_PROCESS_CLOSE,                       \
@@ -445,7 +444,6 @@ RB_HEAD(uv_timer_tree_s, uv_timer_s);
   unsigned int flags;
 
 #define UV_GETADDRINFO_PRIVATE_FIELDS     \
-  struct uv_req_s getadddrinfo_req;       \
   uv_getaddrinfo_cb getaddrinfo_cb;       \
   void* alloc;                            \
   wchar_t* node;                          \

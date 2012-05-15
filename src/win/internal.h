@@ -285,8 +285,7 @@ void uv_process_ares_cleanup_req(uv_loop_t* loop, uv_ares_task_t* handle,
 /*
  * Getaddrinfo
  */
-void uv_process_getaddrinfo_req(uv_loop_t* loop, uv_getaddrinfo_t* handle,
-    uv_req_t* req);
+void uv_process_getaddrinfo_req(uv_loop_t* loop, uv_getaddrinfo_t* req);
 
 
 /*

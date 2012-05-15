@@ -58,19 +58,7 @@ uv_handle_type uv_guess_handle(uv_file file) {
 
 
 int uv_is_active(const uv_handle_t* handle) {
-  switch (handle->type) {
-    case UV_TIMER:
-    case UV_IDLE:
-    case UV_PREPARE:
-    case UV_CHECK:
-      return (handle->flags & UV_HANDLE_ACTIVE) ? 1 : 0;
-
-    case UV_POLL:
-      return ((uv_poll_t*) handle)->events != 0;
-
-    default:
-      return 1;
-  }
+  return (handle->flags & UV__ACTIVE) && !(handle->flags & UV_HANDLE_CLOSING);
 }
 
 

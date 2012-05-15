@@ -24,7 +24,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 
 uv_handle_type uv_guess_handle(uv_file file) {

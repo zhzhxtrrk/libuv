@@ -21,7 +21,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 #include <stdio.h>
 #include <assert.h>

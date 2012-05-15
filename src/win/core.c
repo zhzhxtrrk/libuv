@@ -28,7 +28,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 
 /* The only event loop we support right now */

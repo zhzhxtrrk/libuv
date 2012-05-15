@@ -23,7 +23,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 
 static void uv_work_req_init(uv_loop_t* loop, uv_work_t* req,

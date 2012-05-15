@@ -23,7 +23,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 
 void uv_stream_init(uv_loop_t* loop, uv_stream_t* handle) {

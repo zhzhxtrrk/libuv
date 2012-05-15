@@ -24,7 +24,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 
 /*

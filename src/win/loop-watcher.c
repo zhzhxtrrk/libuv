@@ -23,7 +23,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 
 void uv_loop_watcher_endgame(uv_loop_t* loop, uv_handle_t* handle) {

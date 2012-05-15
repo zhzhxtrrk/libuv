@@ -26,7 +26,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 
 #define UNICODE_REPLACEMENT_CHARACTER (0xfffd)

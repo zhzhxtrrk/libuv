@@ -23,7 +23,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 
 #define HAVE_SRWLOCK_API() (pTryAcquireSRWLockShared != NULL)

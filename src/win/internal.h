@@ -23,6 +23,7 @@
 #define UV_WIN_INTERNAL_H_
 
 #include "uv.h"
+#include "../uv-common.h"
 
 #include "tree.h"
 #include "winapi.h"

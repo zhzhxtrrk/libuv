@@ -29,7 +29,6 @@
 
 #include "uv.h"
 #include "internal.h"
-#include "../uv-common.h"
 
 #include <iphlpapi.h>
 #include <psapi.h>

@@ -31,15 +31,6 @@
 
 
 /*
- * Timers
- */
-void uv_timer_endgame(uv_loop_t* loop, uv_timer_t* handle);
-
-DWORD uv_get_poll_timeout(uv_loop_t* loop);
-void uv_process_timers(uv_loop_t* loop);
-
-
-/*
  * Handles
  */
 
@@ -241,6 +232,15 @@ void uv_process_poll_req(uv_loop_t* loop, uv_poll_t* handle,
 
 void uv_poll_close(uv_loop_t* loop, uv_poll_t* handle);
 void uv_poll_endgame(uv_loop_t* loop, uv_poll_t* handle);
+
+
+/*
+ * Timers
+ */
+void uv_timer_endgame(uv_loop_t* loop, uv_timer_t* handle);
+
+DWORD uv_get_poll_timeout(uv_loop_t* loop);
+void uv_process_timers(uv_loop_t* loop);
 
 
 /*

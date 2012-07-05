@@ -54,6 +54,7 @@
         'src/fs-poll.c',
         'src/uv-common.c',
         'src/uv-common.h',
+        'src/version.c',
         'src/ares/ares_cancel.c',
         'src/ares/ares__close_sockets.c',
         'src/ares/ares_data.c',

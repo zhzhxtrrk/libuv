@@ -44,6 +44,7 @@
 
 
 static void uv_tty_update_virtual_window(CONSOLE_SCREEN_BUFFER_INFO* info);
+static void uv_tty_update_virtual_window_light(COORD size);
 
 
 /* Null uv_buf_t */
@@ -489,7 +490,16 @@ void uv_process_tty_read_raw_req(uv_loop_t* loop, uv_tty_t* handle,
       }
       records_left--;
 
-      /* Ignore events that are not keyboard events */
+      /* If the window was resized, recompute the virtual window size. This */
+      /* will trigger a SIGWINCH signal if the window size changed in an */
+      /* interesting meaningful way. */
+      if (handle->last_input_record.EventType == WINDOW_BUFFER_SIZE_EVENT) {
+        uv_tty_update_virtual_window_light(
+            handle->last_input_record.Event.WindowBufferSizeEvent.dwSize);
+        continue;
+      }
+
+      /* Ignore other events that are not key or resize events. */
       if (handle->last_input_record.EventType != KEY_EVENT) {
         continue;
       }
@@ -798,9 +808,16 @@ int uv_tty_read_stop(uv_tty_t* handle) {
 }
 
 
+/*
+ * "Full" version of the virtual window update code. It takes into account
+ * both the buffer size and the window height.
+ */
 static void uv_tty_update_virtual_window(CONSOLE_SCREEN_BUFFER_INFO* info) {
-  uv_tty_virtual_height = info->srWindow.Bottom - info->srWindow.Top + 1;
+  int old_virtual_width = uv_tty_virtual_width;
+  int old_virtual_height = uv_tty_virtual_height;
+
   uv_tty_virtual_width = info->dwSize.X;
+  uv_tty_virtual_height = info->srWindow.Bottom - info->srWindow.Top + 1;
 
   /* Recompute virtual window offset row. */
   if (uv_tty_virtual_offset == -1) {
@@ -817,6 +834,44 @@ static void uv_tty_update_virtual_window(CONSOLE_SCREEN_BUFFER_INFO* info) {
   }
   if (uv_tty_virtual_offset < 0) {
     uv_tty_virtual_offset = 0;
+  }
+
+  /* If the virtual window size changed, emit a SIGWINCH signal. Don't emit */
+  /* if this was the first time the virtual window size was computed. */
+  if (old_virtual_width != -1 && old_virtual_height != -1 &&
+      (uv_tty_virtual_width != old_virtual_width ||
+       uv_tty_virtual_height != old_virtual_height)) {
+    uv__signal_dispatch(SIGWINCH);
+  }
+}
+
+
+/*
+ * "Light" version of the virtual window update code; it only takes the screen
+ * buffer size into account. The window height is not updated except if the
+ * buffer height is lower than the size of the virtual window.
+ */
+static void uv_tty_update_virtual_window_light(COORD size) {
+  int old_virtual_width = uv_tty_virtual_width;
+  int old_virtual_height = uv_tty_virtual_height;
+
+  /* We can't reasonably update the height if it has never been initialized. */
+  /* Therefore, don't try. */
+  if (old_virtual_height == -1) {
+    return;
+  }
+
+  uv_tty_virtual_width = size.X;
+
+  if (size.Y < uv_tty_virtual_height) {
+    uv_tty_virtual_height = size.Y;
+    uv_tty_virtual_offset = 0;
+  }
+
+  /* If the virtual window size changed, emit a SIGWINCH signal. */
+  if (uv_tty_virtual_width != old_virtual_width ||
+      uv_tty_virtual_height != old_virtual_height) {
+    uv__signal_dispatch(SIGWINCH);
   }
 }
 

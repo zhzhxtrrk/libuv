@@ -1585,6 +1585,7 @@ struct uv_signal_s {
   UV_HANDLE_FIELDS
   uv_signal_cb signal_cb;
   UV_SIGNAL_PRIVATE_FIELDS
+  int signum;
 };
 
 /* These functions are no-ops on Windows. */

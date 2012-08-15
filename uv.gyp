@@ -368,6 +368,27 @@
           'SubSystem': 1, # /subsystem:console
         },
       },
+    },
+
+    {
+      'target_name': 'try',
+      'type': 'executable',
+      'dependencies': [ 'uv' ],
+      'sources': [
+        'try/try.c'
+      ],
+      'conditions': [
+        [ 'OS=="win"', {
+          'libraries': [ 'ws2_32.lib' ]
+        }, { # POSIX
+          'defines': [ '_GNU_SOURCE' ],
+        }]
+      ],
+      'msvs-settings': {
+        'VCLinkerTool': {
+          'SubSystem': 1, # /subsystem:console
+        },
+      },
     }
   ]
 }

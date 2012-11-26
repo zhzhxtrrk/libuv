@@ -27,6 +27,9 @@
 extern "C" {
 #endif
 
+#define UV_VERSION_MAJOR 0
+#define UV_VERSION_MINOR 9
+
 #ifdef _WIN32
   /* Windows - set up dll import/export decorators. */
 # if defined(BUILDING_UV_SHARED)
@@ -45,10 +48,13 @@ extern "C" {
 # define UV_EXTERN /* nothing */
 #endif
 
-
-#define UV_VERSION_MAJOR 0
-#define UV_VERSION_MINOR 9
-
+#if defined(__GNUC__)
+# define UV_DEPRECATED __attribute__((deprecated))
+#elif defined(_WIN32)
+# define UV_DEPRECATED __declspec(deprecated)
+#else
+# define UV_DEPRECATED
+#endif
 
 #if defined(_MSC_VER) && _MSC_VER < 1600
 # include "uv-private/stdint-msvc2008.h"

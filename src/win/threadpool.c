@@ -53,7 +53,7 @@ static DWORD WINAPI uv_work_thread_proc(void* parameter) {
 }
 
 
-int uv_queue_work(uv_loop_t* loop, uv_work_t* req, uv_work_cb work_cb,
+int uv_work_queue(uv_loop_t* loop, uv_work_t* req, uv_work_cb work_cb,
     uv_after_work_cb after_work_cb) {
   if (work_cb == NULL)
     return uv__set_artificial_error(loop, UV_EINVAL);
@@ -74,4 +74,13 @@ void uv_process_work_req(uv_loop_t* loop, uv_work_t* req) {
   uv__req_unregister(loop, req);
   if(req->after_work_cb)
     req->after_work_cb(req);
+}
+
+
+/* Deprecated. */
+int uv_queue_work(uv_loop_t* loop,
+                  uv_work_t* req,
+                  uv_work_cb work_cb,
+                  uv_after_work_cb after_work_cb) {
+  return uv_work_queue(loop, req, work_cb, after_work_cb);
 }

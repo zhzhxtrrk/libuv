@@ -46,7 +46,7 @@ TEST_IMPL(threadpool_queue_work_simple) {
   int r;
 
   work_req.data = &data;
-  r = uv_queue_work(uv_default_loop(), &work_req, work_cb, after_work_cb);
+  r = uv_work_queue(uv_default_loop(), &work_req, work_cb, after_work_cb);
   ASSERT(r == 0);
   uv_run(uv_default_loop());
 
@@ -62,7 +62,7 @@ TEST_IMPL(threadpool_queue_work_einval) {
   int r;
 
   work_req.data = &data;
-  r = uv_queue_work(uv_default_loop(), &work_req, NULL, after_work_cb);
+  r = uv_work_queue(uv_default_loop(), &work_req, NULL, after_work_cb);
   ASSERT(r == -1);
 
   uv_run(uv_default_loop());

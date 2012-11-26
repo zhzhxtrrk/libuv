@@ -1360,9 +1360,17 @@ struct uv_work_s {
   UV_WORK_PRIVATE_FIELDS
 };
 
+/* Deprecated, scheduled for removal. Use uv_work_queue(). */
+UV_EXTERN UV_DEPRECATED int uv_queue_work(uv_loop_t* loop,
+                                          uv_work_t* req,
+                                          uv_work_cb work_cb,
+                                          uv_after_work_cb after_work_cb);
+
 /* Queues a work request to execute asynchronously on the thread pool. */
-UV_EXTERN int uv_queue_work(uv_loop_t* loop, uv_work_t* req,
-    uv_work_cb work_cb, uv_after_work_cb after_work_cb);
+UV_EXTERN int uv_work_queue(uv_loop_t* loop,
+                            uv_work_t* req,
+                            uv_work_cb work_cb,
+                            uv_after_work_cb after_work_cb);
 
 
 struct uv_cpu_info_s {

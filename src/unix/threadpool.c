@@ -160,7 +160,7 @@ static void uv__queue_done(struct uv__work* w) {
 }
 
 
-int uv_queue_work(uv_loop_t* loop,
+int uv_work_queue(uv_loop_t* loop,
                   uv_work_t* req,
                   uv_work_cb work_cb,
                   uv_after_work_cb after_work_cb) {
@@ -173,4 +173,12 @@ int uv_queue_work(uv_loop_t* loop,
   req->after_work_cb = after_work_cb;
   uv__work_submit(loop, &req->work_req, uv__queue_work, uv__queue_done);
   return 0;
+}
+
+
+int uv_queue_work(uv_loop_t* loop,
+                  uv_work_t* req,
+                  uv_work_cb work_cb,
+                  uv_after_work_cb after_work_cb) {
+  return uv_work_queue(loop, req, work_cb, after_work_cb);
 }

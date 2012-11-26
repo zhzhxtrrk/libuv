@@ -30,6 +30,9 @@ static ngx_queue_t wq = { &wq, &wq };
 static volatile int initialized;
 
 
+/* To avoid deadlock with uv_work_cancel() it's crucial that the worker
+ * never holds the global mutex and the loop-local mutex at the same time.
+ */
 static void worker(void* arg) {
   struct uv__work* w;
   ngx_queue_t* q;
@@ -46,8 +49,11 @@ static void worker(void* arg) {
 
     if (q == &exit_message)
       uv_cond_signal(&cond);
-    else
+    else {
       ngx_queue_remove(q);
+      ngx_queue_init(q);  /* Signal uv_work_cancel() that the work req is
+                             executing. */
+    }
 
     uv_mutex_unlock(&mutex);
 
@@ -58,6 +64,8 @@ static void worker(void* arg) {
     w->work(w);
 
     uv_mutex_lock(&w->loop->wq_mutex);
+    w->work = NULL;  /* Signal uv_work_cancel() that the work req is done
+                        executing. */
     ngx_queue_insert_tail(&w->loop->wq, &w->wq);
     uv_async_send(&w->loop->wq_async);
     uv_mutex_unlock(&w->loop->wq_mutex);
@@ -173,6 +181,30 @@ int uv_work_queue(uv_loop_t* loop,
   req->after_work_cb = after_work_cb;
   uv__work_submit(loop, &req->work_req, uv__queue_work, uv__queue_done);
   return 0;
+}
+
+
+int uv_work_cancel(uv_work_t* req) {
+  struct uv__work* w;
+  int cancelled;
+
+  w = &req->work_req;
+  uv_mutex_lock(&mutex);
+  uv_mutex_lock(&w->loop->wq_mutex);
+
+  cancelled = !ngx_queue_empty(&w->wq) && w->work != NULL;
+  if (cancelled)
+    ngx_queue_remove(&w->wq);
+
+  uv_mutex_unlock(&w->loop->wq_mutex);
+  uv_mutex_unlock(&mutex);
+
+  if (cancelled) {
+    uv__req_unregister(req->loop, req);
+    return 0;
+  }
+
+  return -1;
 }
 
 

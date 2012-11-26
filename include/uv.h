@@ -1372,6 +1372,13 @@ UV_EXTERN int uv_work_queue(uv_loop_t* loop,
                             uv_work_cb work_cb,
                             uv_after_work_cb after_work_cb);
 
+/* Cancel a pending work request. Fails if the work request is executing or
+ * has finished executing.
+ *
+ * Returns 0 on success, -1 on error. The loop error code is not touched.
+ */
+UV_EXTERN int uv_work_cancel(uv_work_t* req);
+
 
 struct uv_cpu_info_s {
   char* model;

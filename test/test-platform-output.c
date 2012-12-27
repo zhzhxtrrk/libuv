@@ -40,7 +40,7 @@ TEST_IMPL(platform_output) {
 
   err = uv_resident_set_memory(&rss);
   ASSERT(UV_OK == err.code);
-  printf("uv_resident_set_memory: %llu\n", (unsigned long long) rss);
+  printf("uv_resident_set_memory: %lu\n", (unsigned long) rss);
 
   err = uv_uptime(&uptime);
   ASSERT(UV_OK == err.code);
@@ -54,14 +54,11 @@ TEST_IMPL(platform_output) {
   for (i = 0; i < count; i++) {
     printf("  model: %s\n", cpus[i].model);
     printf("  speed: %d\n", cpus[i].speed);
-    printf("  times.sys: %llu\n", (unsigned long long) cpus[i].cpu_times.sys);
-    printf("  times.user: %llu\n",
-           (unsigned long long) cpus[i].cpu_times.user);
-    printf("  times.idle: %llu\n",
-           (unsigned long long) cpus[i].cpu_times.idle);
-    printf("  times.irq: %llu\n",  (unsigned long long) cpus[i].cpu_times.irq);
-    printf("  times.nice: %llu\n",
-           (unsigned long long) cpus[i].cpu_times.nice);
+    printf("  times.sys: %lu\n",  (unsigned long) cpus[i].cpu_times.sys);
+    printf("  times.user: %lu\n", (unsigned long) cpus[i].cpu_times.user);
+    printf("  times.idle: %lu\n", (unsigned long) cpus[i].cpu_times.idle);
+    printf("  times.irq: %lu\n",  (unsigned long) cpus[i].cpu_times.irq);
+    printf("  times.nice: %lu\n", (unsigned long) cpus[i].cpu_times.nice);
   }
   uv_free_cpu_info(cpus, count);
 

@@ -104,7 +104,7 @@ static char buf[32];
 static char test_buf[] = "test-buffer\n";
 
 
-void check_permission(const char* filename, int mode) {
+void check_permission(const char* filename, unsigned mode) {
   int r;
   uv_fs_t req;
   struct stat* s;
@@ -1391,7 +1391,7 @@ TEST_IMPL(fs_symlink_dir) {
 #ifdef _WIN32
   ASSERT(((struct stat*)req.ptr)->st_size == strlen(test_dir + 4));
 #else
-  ASSERT(((struct stat*)req.ptr)->st_size == strlen(test_dir));
+  ASSERT(((struct stat*)req.ptr)->st_size == (int) strlen(test_dir));
 #endif
   uv_fs_req_cleanup(&req);
 

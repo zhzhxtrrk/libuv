@@ -771,6 +771,7 @@ TEST_IMPL(environment_creation) {
 
 #ifndef _WIN32
 TEST_IMPL(spawn_setuid_setgid) {
+  struct passwd* pw;
   int r;
 
   /* if not root, then this will fail. */
@@ -783,7 +784,6 @@ TEST_IMPL(spawn_setuid_setgid) {
   init_process_options("spawn_helper1", exit_cb);
 
   /* become the "nobody" user. */
-  struct passwd* pw;
   pw = getpwnam("nobody");
   ASSERT(pw != NULL);
   options.uid = pw->pw_uid;

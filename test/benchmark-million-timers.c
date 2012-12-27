@@ -70,7 +70,7 @@ BENCHMARK_IMPL(million_timers) {
   ASSERT(close_cb_called == NUM_TIMERS);
   free(timers);
 
-  LOGF("%.2f seconds\n", (after - before) / 1e9);
+  fprintf(stderr, "%.2f seconds\n", (after - before) / 1e9);
 
   MAKE_VALGRIND_HAPPY();
   return 0;

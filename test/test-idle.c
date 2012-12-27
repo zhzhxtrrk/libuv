@@ -44,7 +44,7 @@ static void timer_cb(uv_timer_t* handle, int status) {
   uv_close((uv_handle_t*) &timer_handle, close_cb);
 
   timer_cb_called++;
-  LOGF("timer_cb %d\n", timer_cb_called);
+  fprintf(stderr, "timer_cb %d\n", timer_cb_called);
 }
 
 
@@ -53,7 +53,7 @@ static void idle_cb(uv_idle_t* handle, int status) {
   ASSERT(status == 0);
 
   idle_cb_called++;
-  LOGF("idle_cb %d\n", idle_cb_called);
+  fprintf(stderr, "idle_cb %d\n", idle_cb_called);
 }
 
 

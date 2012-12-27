@@ -90,7 +90,7 @@ static void show_stats(uv_timer_t* handle, int status) {
   int i;
 
 #if PRINT_STATS
-  LOGF("connections: %d, write: %.1f gbit/s\n",
+  fprintf(stderr, "connections: %d, write: %.1f gbit/s\n",
        write_sockets,
        gbit(nsent, STATS_INTERVAL));
 #endif
@@ -101,7 +101,7 @@ static void show_stats(uv_timer_t* handle, int status) {
     uv_update_time(loop);
     diff = uv_now(loop) - start_time;
 
-    LOGF("%s_pump%d_client: %.1f gbit/s\n", type == TCP ? "tcp" : "pipe", write_sockets,
+    fprintf(stderr, "%s_pump%d_client: %.1f gbit/s\n", type == TCP ? "tcp" : "pipe", write_sockets,
         gbit(nsent_total, diff));
 
     for (i = 0; i < write_sockets; i++) {
@@ -123,7 +123,7 @@ static void read_show_stats() {
   uv_update_time(loop);
   diff = uv_now(loop) - start_time;
 
-  LOGF("%s_pump%d_server: %.1f gbit/s\n", type == TCP ? "tcp" : "pipe", max_read_sockets,
+  fprintf(stderr, "%s_pump%d_server: %.1f gbit/s\n", type == TCP ? "tcp" : "pipe", max_read_sockets,
       gbit(nrecv_total, diff));
 }
 
@@ -212,7 +212,10 @@ static void do_write(uv_stream_t* stream) {
 static void connect_cb(uv_connect_t* req, int status) {
   int i;
 
-  if (status) LOG(uv_strerror(uv_last_error(loop)));
+  if (status) {
+    fputs(uv_strerror(uv_last_error(loop)), stderr);
+  }
+
   ASSERT(status == 0);
 
   write_sockets++;

@@ -294,7 +294,7 @@ static int pound_it(int concurrency,
   /* Number of fractional seconds it took to run the benchmark. */
   secs = (double)(end_time - start_time) / NANOSEC;
 
-  LOGF("%s-conn-pound-%d: %.0f accepts/s (%d failed)\n",
+  fprintf(stderr, "%s-conn-pound-%d: %.0f accepts/s (%d failed)\n",
        type,
        concurrency,
        closed_streams / secs,

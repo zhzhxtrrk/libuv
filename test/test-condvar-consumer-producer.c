@@ -127,7 +127,7 @@ TEST_IMPL(consumer_producer) {
 
   ASSERT(0 == uv_thread_join(&pthread));
 
-  LOGF("finished_consumers: %d\n", finished_consumers);
+  fprintf(stderr, "finished_consumers: %d\n", finished_consumers);
   ASSERT(finished_consumers == MAX_CONSUMERS);
 
   uv_cond_destroy(&empty);

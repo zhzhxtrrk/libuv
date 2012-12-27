@@ -114,7 +114,7 @@ static void timer_cb(uv_timer_t* handle, int status) {
 
 
 static void idle_2_close_cb(uv_handle_t* handle) {
-  LOG("IDLE_2_CLOSE_CB\n");
+  fprintf(stderr, "IDLE_2_CLOSE_CB\n");
 
   ASSERT(handle == (uv_handle_t*)&idle_2_handle);
 
@@ -126,7 +126,7 @@ static void idle_2_close_cb(uv_handle_t* handle) {
 
 
 static void idle_2_cb(uv_idle_t* handle, int status) {
-  LOG("IDLE_2_CB\n");
+  fprintf(stderr, "IDLE_2_CB\n");
 
   ASSERT(handle == &idle_2_handle);
   ASSERT(status == 0);
@@ -140,7 +140,7 @@ static void idle_2_cb(uv_idle_t* handle, int status) {
 static void idle_1_cb(uv_idle_t* handle, int status) {
   int r;
 
-  LOG("IDLE_1_CB\n");
+  fprintf(stderr, "IDLE_1_CB\n");
 
   ASSERT(handle != NULL);
   ASSERT(status == 0);
@@ -168,7 +168,7 @@ static void idle_1_cb(uv_idle_t* handle, int status) {
 
 
 static void idle_1_close_cb(uv_handle_t* handle) {
-  LOG("IDLE_1_CLOSE_CB\n");
+  fprintf(stderr, "IDLE_1_CLOSE_CB\n");
 
   ASSERT(handle != NULL);
 
@@ -177,7 +177,7 @@ static void idle_1_close_cb(uv_handle_t* handle) {
 
 
 static void prepare_1_close_cb(uv_handle_t* handle) {
-  LOG("PREPARE_1_CLOSE_CB");
+  fprintf(stderr, "PREPARE_1_CLOSE_CB");
   ASSERT(handle == (uv_handle_t*)&prepare_1_handle);
 
   prepare_1_close_cb_called++;
@@ -185,7 +185,7 @@ static void prepare_1_close_cb(uv_handle_t* handle) {
 
 
 static void check_close_cb(uv_handle_t* handle) {
-  LOG("CHECK_CLOSE_CB\n");
+  fprintf(stderr, "CHECK_CLOSE_CB\n");
   ASSERT(handle == (uv_handle_t*)&check_handle);
 
   check_close_cb_called++;
@@ -193,7 +193,7 @@ static void check_close_cb(uv_handle_t* handle) {
 
 
 static void prepare_2_close_cb(uv_handle_t* handle) {
-  LOG("PREPARE_2_CLOSE_CB\n");
+  fprintf(stderr, "PREPARE_2_CLOSE_CB\n");
   ASSERT(handle == (uv_handle_t*)&prepare_2_handle);
 
   prepare_2_close_cb_called++;
@@ -203,7 +203,7 @@ static void prepare_2_close_cb(uv_handle_t* handle) {
 static void check_cb(uv_check_t* handle, int status) {
   int i, r;
 
-  LOG("CHECK_CB\n");
+  fprintf(stderr, "CHECK_CB\n");
 
   ASSERT(handle == &check_handle);
   ASSERT(status == 0);
@@ -240,7 +240,7 @@ static void check_cb(uv_check_t* handle, int status) {
 static void prepare_2_cb(uv_prepare_t* handle, int status) {
   int r;
 
-  LOG("PREPARE_2_CB\n");
+  fprintf(stderr, "PREPARE_2_CB\n");
 
   ASSERT(handle == &prepare_2_handle);
   ASSERT(status == 0);
@@ -261,7 +261,7 @@ static void prepare_2_cb(uv_prepare_t* handle, int status) {
 static void prepare_1_cb(uv_prepare_t* handle, int status) {
   int r;
 
-  LOG("PREPARE_1_CB\n");
+  fprintf(stderr, "PREPARE_1_CB\n");
 
   ASSERT(handle == &prepare_1_handle);
   ASSERT(status == 0);

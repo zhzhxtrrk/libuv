@@ -33,7 +33,7 @@ static void log_progress(int total, int passed, int failed, const char* name) {
   if (total == 0)
     total = 1;
 
-  LOGF("[%% %3d|+ %3d|- %3d]: %s", (int) ((passed + failed) / ((double) total) * 100.0),
+  fprintf(stderr, "[%% %3d|+ %3d|- %3d]: %s", (int) ((passed + failed) / ((double) total) * 100.0),
       passed, failed, name);
 }
 
@@ -244,40 +244,40 @@ out:
   /* Show error and output from processes if the test failed. */
   if (status != 0 || task->show_output) {
     if (status != 0) {
-      LOGF("\n`%s` failed: %s\n", test, errmsg);
+      fprintf(stderr, "\n`%s` failed: %s\n", test, errmsg);
     } else {
-      LOGF("\n");
+      fprintf(stderr, "\n");
     }
 
     for (i = 0; i < process_count; i++) {
       switch (process_output_size(&processes[i])) {
        case -1:
-        LOGF("Output from process `%s`: (unavailable)\n",
+        fprintf(stderr, "Output from process `%s`: (unavailable)\n",
              process_get_name(&processes[i]));
         break;
 
        case 0:
-        LOGF("Output from process `%s`: (no output)\n",
+        fprintf(stderr, "Output from process `%s`: (no output)\n",
              process_get_name(&processes[i]));
         break;
 
        default:
-        LOGF("Output from process `%s`:\n", process_get_name(&processes[i]));
+        fprintf(stderr, "Output from process `%s`:\n", process_get_name(&processes[i]));
         process_copy_output(&processes[i], fileno(stderr));
         break;
       }
     }
-    LOG("=============================================================\n");
+    fprintf(stderr, "=============================================================\n");
 
   /* In benchmark mode show concise output from the main process. */
   } else if (benchmark_output) {
     switch (process_output_size(main_proc)) {
      case -1:
-      LOGF("%s: (unavailable)\n", test);
+      fprintf(stderr, "%s: (unavailable)\n", test);
       break;
 
      case 0:
-      LOGF("%s: (no output)\n", test);
+      fprintf(stderr, "%s: (no output)\n", test);
       break;
 
      default:
@@ -312,7 +312,7 @@ int run_test_part(const char* test, const char* part) {
     }
   }
 
-  LOGF("No test part with that name: %s:%s\n", test, part);
+  fprintf(stderr, "No test part with that name: %s:%s\n", test, part);
   return 255;
 }
 

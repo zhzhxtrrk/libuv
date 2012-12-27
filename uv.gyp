@@ -1,21 +1,205 @@
 {
+  'variables': {
+    'visibility%': 'hidden',
+    'target_arch%': 'ia32',
+    'host_arch%': 'ia32',
+    'library%': 'static_library',
+    'msvs_multi_core_compile': '0',
+    'gcc_version%': 'unknown',
+    'clang%': 0,
+  },
+
   'target_defaults': {
+    'default_configuration': 'Debug',
     'conditions': [
-      ['OS != "win"', {
+      ['OS == "win"', {
+        'msvs_cygwin_shell': 0, # prevent actions from trying to use cygwin
         'defines': [
+          'WIN32',
+          '_WIN32_WINNT=0x0600',
+          # we don't really want VC++ warning us about
+          # how dangerous C functions are...
+          '_CRT_SECURE_NO_DEPRECATE',
+          # ... or that C implementations shouldn't use
+          # POSIX names
+          '_CRT_NONSTDC_NO_DEPRECATE',
+        ],
+      }, {
+        'defines': [
+          '_XOPEN_SOURCE=500',
           '_LARGEFILE_SOURCE',
           '_FILE_OFFSET_BITS=64',
-          '_GNU_SOURCE',
         ],
-        'conditions': [
-          ['OS=="solaris"', {
-            'cflags': [ '-pthreads' ],
-          }, {
-            'cflags': [ '-pthread' ],
+        'cflags': [
+          '-pedantic',
+          '-Wall',
+          '-Wextra',
+          '-Wno-unused-parameter'
+        ],
+        'link_settings': {
+          'libraries': [ '-lm' ],
+        },
+      }],
+      ['visibility=="hidden" and (clang==1 or gcc_version >= 40)', {
+        'cflags': [ '-fvisibility=hidden' ],
+      }],
+      ['OS=="aix"', {
+        'defines': [ '_ALL_SOURCE' ],
+      }],
+      ['OS=="linux"', {
+        'defines': [ '_GNU_SOURCE' ],
+      }],
+      ['OS=="solaris"', {
+        'defines': [ '__EXTENSIONS__' ],
+      }],
+      ['OS=="solaris"', {
+        'cflags':  [ '-pthreads' ],
+        'ldflags': [ '-pthreads' ],
+      }, {
+        'cflags':  [ '-pthread' ],
+        'ldflags': [ '-pthread' ],
+      }],
+      ['target_arch != host_arch', {
+        'target_conditions': [
+          ['target_arch=="ia32"', {
+            'cflags': [ '-m32' ],
+            'ldflags': [ '-m32' ],
+            'msvs_configuration_platform': 'x86',
+          }],
+          ['target_arch=="x64"', {
+            'cflags': [ '-m64' ],
+            'ldflags': [ '-m64' ],
+            'msvs_configuration_platform': 'x64',
           }],
         ],
       }],
     ],
+    'msvs_settings': {
+      'VCCLCompilerTool': {
+        'StringPooling': 'true', # pool string literals
+        'DebugInformationFormat': 3, # Generate a PDB
+        'WarningLevel': 3,
+        'BufferSecurityCheck': 'true',
+        'ExceptionHandling': 1, # /EHsc
+        'SuppressStartupBanner': 'true',
+        'WarnAsError': 'false',
+        'AdditionalOptions': [
+           '/MP', # compile across multiple CPUs
+         ],
+      },
+      'VCLinkerTool': {
+        'GenerateDebugInformation': 'true',
+        'RandomizedBaseAddress': 2, # enable ASLR
+        'DataExecutionPrevention': 2, # enable DEP
+        'AllowIsolation': 'true',
+        'SuppressStartupBanner': 'true',
+        'target_conditions': [
+          ['_type=="executable"', {
+            'SubSystem': 1, # console executable
+          }],
+        ],
+      },
+    },
+    'xcode_settings': {
+      'ALWAYS_SEARCH_USER_PATHS': 'NO',
+      'GCC_CW_ASM_SYNTAX': 'NO',                # No -fasm-blocks
+      'GCC_DYNAMIC_NO_PIC': 'NO',               # No -mdynamic-no-pic
+                                                # (Equivalent to -fPIC)
+      'GCC_ENABLE_CPP_EXCEPTIONS': 'NO',        # -fno-exceptions
+      'GCC_ENABLE_CPP_RTTI': 'NO',              # -fno-rtti
+      'GCC_ENABLE_PASCAL_STRINGS': 'NO',        # No -mpascal-strings
+      # GCC_INLINES_ARE_PRIVATE_EXTERN maps to -fvisibility-inlines-hidden
+      'GCC_INLINES_ARE_PRIVATE_EXTERN': 'YES',
+      'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES',      # -fvisibility=hidden
+      'GCC_THREADSAFE_STATICS': 'NO',           # -fno-threadsafe-statics
+      'GCC_WARN_ABOUT_MISSING_NEWLINE': 'YES',  # -Wnewline-eof
+      'PREBINDING': 'NO',                       # No -Wl,-prebind
+      'USE_HEADERMAP': 'NO',
+      'OTHER_CFLAGS': [
+        '-fno-strict-aliasing',
+      ],
+      'WARNING_CFLAGS': [
+        '-Wall',
+        '-Wendif-labels',
+        '-W',
+        '-Wno-unused-parameter',
+      ],
+    },
+    'target_conditions': [
+      ['_type=="static_library"', {
+        'standalone_static_library': '1', # disable thin archive
+      }, {
+        'xcode_settings': {
+          'OTHER_LDFLAGS': [ '-Wl,-search_paths_first' ]
+        },
+      }],
+    ],
+    'configurations': {
+      'Debug': {
+        'defines': [ 'DEBUG', '_DEBUG' ],
+        'cflags': [ '-g', '-O0', '-fwrapv' ],
+        'msvs_settings': {
+          'VCCLCompilerTool': {
+            'target_conditions': [
+              ['_type=="static_library"', {
+                'RuntimeLibrary': 1, # static debug
+              }, {
+                'RuntimeLibrary': 3, # DLL debug
+              }],
+            ],
+            'Optimization': 0, # /Od, no optimization
+            'MinimalRebuild': 'false',
+            'OmitFramePointers': 'false',
+            'BasicRuntimeChecks': 3, # /RTC1
+          },
+          'VCLinkerTool': {
+            'LinkIncremental': 2, # enable incremental linking
+          },
+        },
+        'xcode_settings': {
+          'GCC_OPTIMIZATION_LEVEL': '0',
+        },
+      },
+      'Release': {
+        'defines': [ 'NDEBUG' ],
+        'cflags': [
+          '-g',
+          '-O3',
+          '-fomit-frame-pointer',
+          '-ffunction-sections',
+          '-fdata-sections',
+        ],
+        'msvs_settings': {
+          'VCCLCompilerTool': {
+            'target_conditions': [
+              ['_type=="static_library"', {
+                'RuntimeLibrary': 0, # static release
+              }, {
+                'RuntimeLibrary': 2, # debug release
+              }],
+            ],
+            'Optimization': 3, # /Ox, full optimization
+            'FavorSizeOrSpeed': 1, # /Ot, favour speed over size
+            'InlineFunctionExpansion': 2, # /Ob2, inline anything eligible
+            'WholeProgramOptimization': 'true', # /GL, whole program optimization, needed for LTCG
+            'OmitFramePointers': 'true',
+            'EnableFunctionLevelLinking': 'true',
+            'EnableIntrinsicFunctions': 'true',
+          },
+          'VCLibrarianTool': {
+            'AdditionalOptions': [
+              '/LTCG', # link time code generation
+            ],
+          },
+          'VCLinkerTool': {
+            'LinkTimeCodeGeneration': 1, # link-time code generation
+            'OptimizeReferences': 2, # /OPT:REF
+            'EnableCOMDATFolding': 2, # /OPT:ICF
+            'LinkIncremental': 1, # disable incremental linking
+          },
+        },
+      }
+    },
   },
 
   'targets': [
@@ -45,9 +229,6 @@
           }],
         ],
       },
-      'defines': [
-        'HAVE_CONFIG_H'
-      ],
       'sources': [
         'common.gypi',
         'include/uv.h',
@@ -60,10 +241,6 @@
       ],
       'conditions': [
         [ 'OS=="win"', {
-          'defines': [
-            '_WIN32_WINNT=0x0600',
-            '_GNU_SOURCE',
-          ],
           'sources': [
             'include/uv-private/uv-win.h',
             'src/win/async.c',
@@ -106,15 +283,8 @@
               '-liphlpapi.lib'
             ],
           },
-        }, { # Not Windows i.e. POSIX
-          'cflags': [
-            '-g',
-            '--std=gnu89',
-            '-pedantic',
-            '-Wall',
-            '-Wextra',
-            '-Wno-unused-parameter'
-          ],
+        }, {
+          'cflags': [ '-std=gnu89' ],
           'sources': [
             'include/uv-private/uv-unix.h',
             'include/uv-private/uv-linux.h',
@@ -142,18 +312,8 @@
             'src/unix/tty.c',
             'src/unix/udp.c',
           ],
-          'link_settings': {
-            'libraries': [ '-lm' ],
-            'conditions': [
-              ['OS=="solaris"', {
-                'ldflags': [ '-pthreads' ],
-              }, {
-                'ldflags': [ '-pthread' ],
-              }],
-            ],
-          },
           'conditions': [
-            ['"<(library)" == "shared_library"', {
+            ['_type=="shared_library"', {
               'cflags': [ '-fPIC' ],
             }],
           ],
@@ -182,10 +342,6 @@
         }],
         [ 'OS=="solaris"', {
           'sources': [ 'src/unix/sunos.c' ],
-          'defines': [
-            '__EXTENSIONS__',
-            '_XOPEN_SOURCE=500',
-          ],
           'link_settings': {
             'libraries': [
               '-lkstat',
@@ -198,10 +354,7 @@
         [ 'OS=="aix"', {
           'include_dirs': [ 'src/ares/config_aix' ],
           'sources': [ 'src/unix/aix.c' ],
-          'defines': [
-            '_ALL_SOURCE',
-            '_XOPEN_SOURCE=500',
-          ],
+          'defines': [ '_ALL_SOURCE' ],
           'link_settings': {
             'libraries': [
               '-lperfstat',
@@ -230,7 +383,7 @@
         [ 'OS in "mac freebsd dragonflybsd openbsd netbsd".split()', {
           'sources': [ 'src/unix/kqueue.c' ],
         }],
-        ['library=="shared_library"', {
+        ['_type=="shared_library"', {
           'defines': [ 'BUILDING_UV_SHARED=1' ]
         }]
       ]
@@ -328,29 +481,16 @@
         'test/test-udp-multicast-ttl.c',
       ],
       'conditions': [
-        [ 'OS=="win"', {
+        ['OS=="win"', {
           'sources': [
             'test/runner-win.c',
             'test/runner-win.h'
           ],
           'libraries': [ 'ws2_32.lib' ]
-        }, { # POSIX
-          'defines': [ '_GNU_SOURCE' ],
+        }, {
           'sources': [
             'test/runner-unix.c',
             'test/runner-unix.h',
-          ],
-        }],
-        [ 'OS=="solaris"', { # make test-fs.c compile, needs _POSIX_C_SOURCE
-          'defines': [
-            '__EXTENSIONS__',
-            '_XOPEN_SOURCE=500',
-          ],
-        }],
-        [ 'OS=="aix"', {     # make test-fs.c compile, needs _POSIX_C_SOURCE
-          'defines': [
-            '_ALL_SOURCE',
-            '_XOPEN_SOURCE=500',
           ],
         }],
       ],
@@ -398,13 +538,12 @@
             'test/runner-win.h',
           ],
           'libraries': [ 'ws2_32.lib' ]
-        }, { # POSIX
-          'defines': [ '_GNU_SOURCE' ],
+        }, {
           'sources': [
             'test/runner-unix.c',
             'test/runner-unix.h',
           ]
-        }]
+        }],
       ],
       'msvs-settings': {
         'VCLinkerTool': {

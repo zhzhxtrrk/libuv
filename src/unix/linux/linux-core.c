@@ -18,6 +18,9 @@
  * IN THE SOFTWARE.
  */
 
+#undef  _GNU_SOURCE  /* In case it's already defined. */
+#define _GNU_SOURCE  /* Make environ visible. */
+
 #include "uv.h"
 #include "../internal.h"
 

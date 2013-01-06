@@ -77,6 +77,9 @@ static uv_err_t uv_utf8_to_utf16_alloc(const char* s, WCHAR** ws_ptr) {
 }
 
 
+static const wchar_t DEFAULT_PATH_EXT[10] = L".COM;.EXE";
+
+
 static void uv_process_init(uv_loop_t* loop, uv_process_t* handle) {
   uv__handle_init(loop, (uv_handle_t*) handle, UV_PROCESS);
   handle->exit_cb = NULL;
@@ -136,7 +139,7 @@ static WCHAR* search_path_join_test(const WCHAR* dir,
 
   /* Allocate buffer for output */
   result = result_pos = (WCHAR*)malloc(sizeof(WCHAR) *
-      (cwd_len + 1 + dir_len + 1 + name_len + 1 + ext_len + 1));
+      (cwd_len + 1 + dir_len + 1 + name_len + ext_len + 1));
 
   /* Copy cwd */
   wcsncpy(result_pos, cwd, cwd_len);
@@ -162,14 +165,8 @@ static WCHAR* search_path_join_test(const WCHAR* dir,
   wcsncpy(result_pos, name, name_len);
   result_pos += name_len;
 
+  /* Copy extension */
   if (ext_len) {
-    /* Add a dot if the filename didn't end with one */
-    if (name_len && result_pos[-1] != '.') {
-      result_pos[0] = L'.';
-      result_pos++;
-    }
-
-    /* Copy extension */
     wcsncpy(result_pos, ext, ext_len);
     result_pos += ext_len;
   }
@@ -198,39 +195,58 @@ static WCHAR* path_search_walk_ext(const WCHAR *dir,
                                    size_t name_len,
                                    WCHAR *cwd,
                                    size_t cwd_len,
+                                   const wchar_t *path_ext,
                                    int name_has_ext) {
-  WCHAR* result;
+  WCHAR* result = NULL;
 
-  /* If the name itself has a nonempty extension, try this extension first */
+  const WCHAR *ext_start = path_ext,
+              *ext_end;
+  int last = 0;
+
+  /* If the name itself has a nonemtpy extension, try this extension first */
   if (name_has_ext) {
     result = search_path_join_test(dir, dir_len,
                                    name, name_len,
                                    L"", 0,
                                    cwd, cwd_len);
-    if (result != NULL) {
-      return result;
+  }
+
+  /* Skip leading whitespace. */
+  while (*ext_start == L' ')
+    ext_start++;
+
+  /* Add path_ext extensions and try to find a name that matches */
+  while (result == NULL) {
+    /* Look for a separator. */
+    ext_end = wcschr(ext_start, L';');
+
+    /* If no separator was found, look for a terminating zero. */
+    if (ext_end == NULL) {
+      ext_end = wcschr(ext_start, '\0');
+      /* Remember to break out of the loop after this round. */
+      last = 1;
+      /* Ignore whitespace before the end. */
+      while (ext_end > ext_start && ext_end[-1] == L' ')
+        ext_end--;
     }
+
+    /* Search, but only if the extension starts with a dot. */
+    if (*ext_start == L'.') {
+      result = search_path_join_test(dir, dir_len,
+                                     name, name_len,
+                                     ext_start, (ext_end - ext_start),
+                                     cwd, cwd_len);
+    }
+
+    /* Break out if this was the last extension in PATHEXT. */
+    if (last)
+      break;
+
+    /* Start the next search after the separator. */
+    ext_start = ext_end + 1;
   }
 
-  /* Try .com extension */
-  result = search_path_join_test(dir, dir_len,
-                                 name, name_len,
-                                 L"com", 3,
-                                 cwd, cwd_len);
-  if (result != NULL) {
-    return result;
-  }
-
-  /* Try .exe extension */
-  result = search_path_join_test(dir, dir_len,
-                                 name, name_len,
-                                 L"exe", 3,
-                                 cwd, cwd_len);
-  if (result != NULL) {
-    return result;
-  }
-
-  return NULL;
+  return result;
 }
 
 
@@ -241,30 +257,44 @@ static WCHAR* path_search_walk_ext(const WCHAR *dir,
  *
  * It tries to return an absolute filename.
  *
- * Furthermore, it tries to follow the semantics that cmd.exe, with this
- * exception that PATHEXT environment variable isn't used. Since CreateProcess
- * can start only .com and .exe files, only those extensions are tried. This
- * behavior equals that of msvcrt's spawn functions.
+ * Furthermore, it tries to follow the semantics that cmd.exe uses as closely
+ * as possible:
  *
  * - Do not search the path if the filename already contains a path (either
  *   relative or absolute).
+ *     (but do use pathext)
  *
  * - If there's really only a filename, check the current directory for file,
  *   then search all path directories.
  *
  * - If filename specified has *any* extension, search for the file with the
  *   specified extension first.
+ *     (not necessary an executable one or one that appears in pathext;
+ *      *but* no extension or just a dot is *not* allowed)
  *
  * - If the literal filename is not found in a directory, try *appending*
- *   (not replacing) .com first and then .exe.
+ *   (not replacing) extensions from pathext in the specified order.
+ *     (an extension consisting of just a dot *may* appear in pathext;
+ *      unlike what happens if the specified filename ends with a dot,
+ *      if pathext specifies a single dot cmd.exe *does* look for an
+ *      extension-less file)
+ *
+ *  - Extensions from pathext are appended to the specified filename as-is,
+ *    including a potential dot. If the filename already ends with a dot, it
+ *    will end up having two dots (e.g. 'cmd.' + '.exe' -> 'cmd..exe').
  *
  * - The path variable may contain relative paths; relative paths are relative
  *   to the cwd.
  *
  * - Directories in path may or may not end with a trailing backslash.
  *
- * - CMD does not trim leading/trailing whitespace from path/pathex entries
- *   nor from the environment variables as a whole.
+ * - Extensions path_ext portions must always start with a dot. Entries that
+ *   do not start with a dot are ignored.
+ *
+ * - CMD does not trim leading/trailing whitespace from path/pathext entries.
+ *
+ * - CMD *does* strip leading and trailing whitespace from the pathext variable
+ *   as a whole; however it doesn't do this for `path`.
  *
  * - When cmd.exe cannot read a directory, it will just skip it and go on
  *   searching. However, unlike posix-y systems, it will happily try to run a
@@ -272,10 +302,13 @@ static WCHAR* path_search_walk_ext(const WCHAR *dir,
  *   continue searching.
  *
  * TODO: correctly interpret UNC paths
+ * TODO: check with cmd what should happen when a pathext entry does not start
+ *       with a dot
  */
 static WCHAR* search_path(const WCHAR *file,
-                            WCHAR *cwd,
-                            const WCHAR *path) {
+                          WCHAR *cwd,
+                          const WCHAR *path,
+                          const WCHAR *path_ext) {
   int file_has_dir;
   WCHAR* result = NULL;
   WCHAR *file_name_start;
@@ -311,12 +344,12 @@ static WCHAR* search_path(const WCHAR *file,
   name_has_ext = (dot != NULL && dot[1] != L'\0');
 
   if (file_has_dir) {
-    /* The file has a path inside, don't use path */
+    /* The file has a path inside, don't use path (but do use pathext) */
     result = path_search_walk_ext(
         file, file_name_start - file,
         file_name_start, file_len - (file_name_start - file),
         cwd, cwd_len,
-        name_has_ext);
+        path_ext, name_has_ext);
 
   } else {
     dir_end = path;
@@ -325,7 +358,7 @@ static WCHAR* search_path(const WCHAR *file,
     result = path_search_walk_ext(L"", 0,
                                   file, file_len,
                                   cwd, cwd_len,
-                                  name_has_ext);
+                                  path_ext, name_has_ext);
 
     while (result == NULL) {
       if (*dir_end == L'\0') {
@@ -367,7 +400,7 @@ static WCHAR* search_path(const WCHAR *file,
       result = path_search_walk_ext(dir_path, dir_len,
                                     file, file_len,
                                     cwd, cwd_len,
-                                    name_has_ext);
+                                    path_ext, name_has_ext);
     }
   }
 
@@ -857,7 +890,8 @@ int uv_spawn(uv_loop_t* loop, uv_process_t* process,
 
   application_path = search_path(application,
                                  cwd,
-                                 path);
+                                 path,
+                                 DEFAULT_PATH_EXT);
   if (application_path == NULL) {
     /* Not found. */
     err = uv__new_artificial_error(UV_ENOENT);

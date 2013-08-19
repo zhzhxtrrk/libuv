@@ -36,7 +36,7 @@ int uv__fsevents_close(uv_fs_event_t* handle) {
 
 
 void uv__fsevents_loop_delete(uv_loop_t* loop) {
-  return 0;
+  return;
 }
 
 #else /* TARGET_OS_IPHONE */

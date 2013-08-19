@@ -24,6 +24,8 @@
 #if !TARGET_OS_IPHONE
 # include <CoreFoundation/CoreFoundation.h>
 # include <ApplicationServices/ApplicationServices.h>
+#else
+# include <errno.h>
 #endif
 
 
